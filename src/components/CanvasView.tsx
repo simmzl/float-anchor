@@ -322,6 +322,15 @@ export default function CanvasView() {
     }
   }, [applyTransform, scheduleCull])
 
+  const toCanvasCoords = useCallback((clientX: number, clientY: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return {
+      x: (clientX - rect.left - pan.current.x) / scaleVal.current,
+      y: (clientY - rect.top - pan.current.y) / scaleVal.current,
+    }
+  }, [])
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) {
       e.preventDefault()
@@ -423,15 +432,6 @@ export default function CanvasView() {
       document.removeEventListener('mouseup', onUp)
     }
   }, [isPanDragging, applyTransform, scheduleCull])
-
-  const toCanvasCoords = useCallback((clientX: number, clientY: number) => {
-    const rect = viewportRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 0, y: 0 }
-    return {
-      x: (clientX - rect.left - pan.current.x) / scaleVal.current,
-      y: (clientY - rect.top - pan.current.y) / scaleVal.current,
-    }
-  }, [])
 
   useEffect(() => {
     if (lassoStart.current === null && !isLassoing.current) return
