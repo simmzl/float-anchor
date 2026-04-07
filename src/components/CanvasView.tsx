@@ -484,7 +484,7 @@ export default function CanvasView() {
     let prevY = multiDragStart.current!.cy
     let dragRaf = 0
 
-    const SNAP_DIST = 10
+    const SNAP_DIST = 6
     const GAP = 12
 
     const onMove = (e: MouseEvent) => {
@@ -495,6 +495,12 @@ export default function CanvasView() {
       const rawDy = (curY - prevY) / s
       prevX = curX
       prevY = curY
+
+      const goingLeft = rawDx < -0.5
+      const goingRight = rawDx > 0.5
+      const goingUp = rawDy < -0.5
+      const goingDown = rawDy > 0.5
+
       dragRaf = requestAnimationFrame(() => {
         const store = useStore.getState()
         const canvas = store.canvases.find((c) => c.id === store.activeCanvasId)
@@ -502,7 +508,6 @@ export default function CanvasView() {
 
         const selectedCards = canvas.cards.filter((c) => selection.cardIds.has(c.id))
         if (selectedCards.length === 0) {
-          const updatedCards = canvas.cards
           const updatedLabels = (canvas.labels ?? []).map((l) =>
             selection.labelIds.has(l.id) ? { ...l, x: l.x + rawDx, y: l.y + rawDy } : l,
           )
@@ -512,26 +517,12 @@ export default function CanvasView() {
           useStore.setState({
             canvases: store.canvases.map((c) =>
               c.id === store.activeCanvasId
-                ? { ...c, cards: updatedCards, labels: updatedLabels, sections: updatedSections }
+                ? { ...c, labels: updatedLabels, sections: updatedSections }
                 : c,
             ),
           })
           return
         }
-
-        let bboxL = Infinity, bboxT = Infinity, bboxR = -Infinity, bboxB = -Infinity
-        for (const sc of selectedCards) {
-          const nx = sc.x + rawDx
-          const ny = sc.y + rawDy
-          const nr = nx + sc.width
-          const nb = ny + (sc.height ?? 300)
-          if (nx < bboxL) bboxL = nx
-          if (ny < bboxT) bboxT = ny
-          if (nr > bboxR) bboxR = nr
-          if (nb > bboxB) bboxB = nb
-        }
-        const bboxW = bboxR - bboxL
-        const bboxH = bboxB - bboxT
 
         let snapDx = rawDx
         let snapDy = rawDy
@@ -543,49 +534,39 @@ export default function CanvasView() {
           const ow = other.width
           const oh = other.height ?? 300
 
-          let d: number
-
-          d = Math.abs(bboxL - (other.x + ow + GAP))
-          if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow + GAP - bboxL) }
-          d = Math.abs(bboxR - (other.x - GAP))
-          if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - GAP - bboxR) }
-          d = Math.abs(bboxL - other.x)
-          if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - bboxL) }
-          d = Math.abs(bboxR - (other.x + ow))
-          if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow - bboxR) }
-
-          d = Math.abs(bboxT - other.y)
-          if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - bboxT) }
-          d = Math.abs(bboxB - (other.y + oh))
-          if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh - bboxB) }
-          d = Math.abs(bboxT - (other.y + oh + GAP))
-          if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh + GAP - bboxT) }
-          d = Math.abs(bboxB - (other.y - GAP))
-          if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - GAP - bboxB) }
-
           for (const sc of selectedCards) {
             const scx = sc.x + rawDx
             const scy = sc.y + rawDy
             const scr = scx + sc.width
             const scb = scy + (sc.height ?? 300)
 
-            d = Math.abs(scx - (other.x + ow + GAP))
-            if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow + GAP - scx) }
-            d = Math.abs(scr - (other.x - GAP))
-            if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - GAP - scr) }
-            d = Math.abs(scx - other.x)
-            if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - scx) }
-            d = Math.abs(scr - (other.x + ow))
-            if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow - scr) }
+            let d: number
 
-            d = Math.abs(scy - other.y)
-            if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - scy) }
-            d = Math.abs(scb - (other.y + oh))
-            if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh - scb) }
-            d = Math.abs(scy - (other.y + oh + GAP))
-            if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh + GAP - scy) }
-            d = Math.abs(scb - (other.y - GAP))
-            if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - GAP - scb) }
+            if (goingLeft) {
+              d = Math.abs(scx - (other.x + ow + GAP))
+              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow + GAP - scx) }
+              d = Math.abs(scx - other.x)
+              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - scx) }
+            }
+            if (goingRight) {
+              d = Math.abs(scr - (other.x - GAP))
+              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - GAP - scr) }
+              d = Math.abs(scr - (other.x + ow))
+              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow - scr) }
+            }
+
+            if (goingUp) {
+              d = Math.abs(scy - other.y)
+              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - scy) }
+              d = Math.abs(scy - (other.y + oh + GAP))
+              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh + GAP - scy) }
+            }
+            if (goingDown) {
+              d = Math.abs(scb - (other.y + oh))
+              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh - scb) }
+              d = Math.abs(scb - (other.y - GAP))
+              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - GAP - scb) }
+            }
           }
         }
 
