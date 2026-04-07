@@ -1,8 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import https from 'node:https'
-import { IncomingMessage } from 'node:http'
 import { exec } from 'node:child_process'
 
 let dataDir = ''
@@ -34,92 +32,81 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-function httpsGetJSON(url: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const get = (reqUrl: string, redirects = 0) => {
-      if (redirects > 5) return reject(new Error('Too many redirects'))
-      https.get(reqUrl, { headers: { 'User-Agent': 'FloatAnchor-Updater' } }, (res: IncomingMessage) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return get(res.headers.location, redirects + 1)
-        }
-        let body = ''
-        res.on('data', (chunk: Buffer) => { body += chunk.toString() })
-        res.on('end', () => {
-          try { resolve(JSON.parse(body)) } catch (e) { reject(e) }
-        })
-        res.on('error', reject)
-      }).on('error', reject)
-    }
-    get(url)
+async function httpsGetJSON(url: string): Promise<any> {
+  const resp = await net.fetch(url, {
+    headers: { 'User-Agent': 'FloatAnchor-Updater' },
   })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
 }
 
 function getDownloadMeta(destPath: string) {
   return destPath + '.meta'
 }
 
-function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const partPath = destPath + '.part'
-    let existingBytes = 0
-    if (fs.existsSync(partPath)) {
-      existingBytes = fs.statSync(partPath).size
+async function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
+  const partPath = destPath + '.part'
+  let existingBytes = 0
+  if (fs.existsSync(partPath)) {
+    existingBytes = fs.statSync(partPath).size
+  }
+
+  const headers: Record<string, string> = {
+    'User-Agent': 'FloatAnchor-Updater',
+    Accept: 'application/octet-stream',
+  }
+  if (existingBytes > 0) {
+    headers['Range'] = `bytes=${existingBytes}-`
+  }
+
+  const resp = await net.fetch(url, { headers })
+
+  if (!resp.ok && resp.status !== 206) {
+    throw new Error(`HTTP ${resp.status}`)
+  }
+
+  const isPartial = resp.status === 206
+  if (resp.status === 200 && existingBytes > 0) {
+    existingBytes = 0
+  }
+
+  let totalBytes: number
+  if (isPartial) {
+    const cr = resp.headers.get('content-range')
+    totalBytes = cr ? parseInt(cr.split('/')[1], 10) : 0
+  } else {
+    totalBytes = parseInt(resp.headers.get('content-length') || '0', 10)
+  }
+
+  if (totalBytes > 0) {
+    fs.writeFileSync(getDownloadMeta(destPath), JSON.stringify({ totalBytes, url }))
+  }
+
+  let downloaded = existingBytes
+  const ws = fs.createWriteStream(partPath, { flags: isPartial ? 'a' : 'w' })
+
+  const reader = resp.body?.getReader()
+  if (!reader) throw new Error('No response body')
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      ws.write(Buffer.from(value))
+      downloaded += value.byteLength
+      if (totalBytes > 0 && onProgress) onProgress(Math.round((downloaded / totalBytes) * 100))
     }
+  } finally {
+    reader.releaseLock()
+  }
 
-    const get = (reqUrl: string, redirects = 0) => {
-      if (redirects > 10) return reject(new Error('Too many redirects'))
-      const mod = reqUrl.startsWith('https') ? https : require('node:http')
-      const headers: Record<string, string> = {
-        'User-Agent': 'FloatAnchor-Updater',
-        Accept: 'application/octet-stream',
-      }
-      if (existingBytes > 0) {
-        headers['Range'] = `bytes=${existingBytes}-`
-      }
-      mod.get(reqUrl, { headers }, (res: IncomingMessage) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return get(res.headers.location, redirects + 1)
-        }
-
-        const isPartial = res.statusCode === 206
-        if (res.statusCode !== 200 && !isPartial) {
-          return reject(new Error(`HTTP ${res.statusCode}`))
-        }
-
-        if (res.statusCode === 200 && existingBytes > 0) {
-          existingBytes = 0
-        }
-
-        let totalBytes: number
-        if (isPartial) {
-          const cr = res.headers['content-range']
-          totalBytes = cr ? parseInt(cr.split('/')[1], 10) : 0
-        } else {
-          totalBytes = parseInt(res.headers['content-length'] || '0', 10)
-        }
-
-        if (totalBytes > 0) {
-          fs.writeFileSync(getDownloadMeta(destPath), JSON.stringify({ totalBytes, url }))
-        }
-
-        let downloaded = existingBytes
-        const ws = fs.createWriteStream(partPath, { flags: isPartial ? 'a' : 'w' })
-        res.on('data', (chunk: Buffer) => {
-          downloaded += chunk.length
-          if (totalBytes > 0 && onProgress) onProgress(Math.round((downloaded / totalBytes) * 100))
-        })
-        res.pipe(ws)
-        ws.on('finish', () => {
-          ws.close()
-          fs.renameSync(partPath, destPath)
-          try { fs.unlinkSync(getDownloadMeta(destPath)) } catch {}
-          resolve()
-        })
-        ws.on('error', reject)
-        res.on('error', reject)
-      }).on('error', reject)
-    }
-    get(url)
+  await new Promise<void>((resolve, reject) => {
+    ws.end(() => {
+      fs.renameSync(partPath, destPath)
+      try { fs.unlinkSync(getDownloadMeta(destPath)) } catch {}
+      resolve()
+    })
+    ws.on('error', reject)
   })
 }
 
