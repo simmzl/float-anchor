@@ -262,13 +262,6 @@ export const useStore = create<AppState>((set, get) => ({
     const selfW = self.width
     const selfH = self.height ?? 300
 
-    const moveDx = x - self.x
-    const moveDy = y - self.y
-    const goingLeft = moveDx < -0.5
-    const goingRight = moveDx > 0.5
-    const goingUp = moveDy < -0.5
-    const goingDown = moveDy > 0.5
-
     let bestX = x
     let bestY = y
     let bestDx = SNAP_DIST
@@ -281,31 +274,23 @@ export const useStore = create<AppState>((set, get) => ({
 
       let d: number
 
-      if (goingLeft) {
-        d = Math.abs(x - (other.x + ow + GAP))
-        if (d < bestDx) { bestDx = d; bestX = other.x + ow + GAP }
-        d = Math.abs(x - other.x)
-        if (d < bestDx) { bestDx = d; bestX = other.x }
-      }
-      if (goingRight) {
-        d = Math.abs((x + selfW) - (other.x - GAP))
-        if (d < bestDx) { bestDx = d; bestX = other.x - GAP - selfW }
-        d = Math.abs((x + selfW) - (other.x + ow))
-        if (d < bestDx) { bestDx = d; bestX = other.x + ow - selfW }
-      }
+      d = Math.abs(x - (other.x + ow + GAP))
+      if (d < bestDx) { bestDx = d; bestX = other.x + ow + GAP }
+      d = Math.abs((x + selfW) - (other.x - GAP))
+      if (d < bestDx) { bestDx = d; bestX = other.x - GAP - selfW }
+      d = Math.abs(x - other.x)
+      if (d < bestDx) { bestDx = d; bestX = other.x }
+      d = Math.abs((x + selfW) - (other.x + ow))
+      if (d < bestDx) { bestDx = d; bestX = other.x + ow - selfW }
 
-      if (goingUp) {
-        d = Math.abs(y - other.y)
-        if (d < bestDy) { bestDy = d; bestY = other.y }
-        d = Math.abs(y - (other.y + oh + GAP))
-        if (d < bestDy) { bestDy = d; bestY = other.y + oh + GAP }
-      }
-      if (goingDown) {
-        d = Math.abs((y + selfH) - (other.y + oh))
-        if (d < bestDy) { bestDy = d; bestY = other.y + oh - selfH }
-        d = Math.abs((y + selfH) - (other.y - GAP))
-        if (d < bestDy) { bestDy = d; bestY = other.y - GAP - selfH }
-      }
+      d = Math.abs(y - other.y)
+      if (d < bestDy) { bestDy = d; bestY = other.y }
+      d = Math.abs((y + selfH) - (other.y + oh))
+      if (d < bestDy) { bestDy = d; bestY = other.y + oh - selfH }
+      d = Math.abs(y - (other.y + oh + GAP))
+      if (d < bestDy) { bestDy = d; bestY = other.y + oh + GAP }
+      d = Math.abs((y + selfH) - (other.y - GAP))
+      if (d < bestDy) { bestDy = d; bestY = other.y - GAP - selfH }
     }
 
     if (self.x === bestX && self.y === bestY) return

@@ -480,40 +480,50 @@ export default function CanvasView() {
   useEffect(() => {
     if (!isMultiDragging) return
     const s = scaleVal.current
-    let prevX = multiDragStart.current!.cx
-    let prevY = multiDragStart.current!.cy
+    const startX = multiDragStart.current!.cx
+    const startY = multiDragStart.current!.cy
     let dragRaf = 0
 
     const SNAP_DIST = 6
     const GAP = 12
 
+    const store0 = useStore.getState()
+    const canvas0 = store0.canvases.find((c) => c.id === store0.activeCanvasId)
+    const origCards = new Map<string, { x: number; y: number }>()
+    const origLabels = new Map<string, { x: number; y: number }>()
+    const origSections = new Map<string, { x: number; y: number }>()
+    if (canvas0) {
+      for (const c of canvas0.cards) {
+        if (selection.cardIds.has(c.id)) origCards.set(c.id, { x: c.x, y: c.y })
+      }
+      for (const l of canvas0.labels ?? []) {
+        if (selection.labelIds.has(l.id)) origLabels.set(l.id, { x: l.x, y: l.y })
+      }
+      for (const sec of canvas0.sections ?? []) {
+        if (selection.sectionIds.has(sec.id)) origSections.set(sec.id, { x: sec.x, y: sec.y })
+      }
+    }
+
     const onMove = (e: MouseEvent) => {
       cancelAnimationFrame(dragRaf)
-      const curX = e.clientX
-      const curY = e.clientY
-      const rawDx = (curX - prevX) / s
-      const rawDy = (curY - prevY) / s
-      prevX = curX
-      prevY = curY
-
-      const goingLeft = rawDx < -0.5
-      const goingRight = rawDx > 0.5
-      const goingUp = rawDy < -0.5
-      const goingDown = rawDy > 0.5
+      const totalDx = (e.clientX - startX) / s
+      const totalDy = (e.clientY - startY) / s
 
       dragRaf = requestAnimationFrame(() => {
         const store = useStore.getState()
         const canvas = store.canvases.find((c) => c.id === store.activeCanvasId)
         if (!canvas) return
 
-        const selectedCards = canvas.cards.filter((c) => selection.cardIds.has(c.id))
-        if (selectedCards.length === 0) {
-          const updatedLabels = (canvas.labels ?? []).map((l) =>
-            selection.labelIds.has(l.id) ? { ...l, x: l.x + rawDx, y: l.y + rawDy } : l,
-          )
-          const updatedSections = (canvas.sections ?? []).map((sec) =>
-            selection.sectionIds.has(sec.id) ? { ...sec, x: sec.x + rawDx, y: sec.y + rawDy } : sec,
-          )
+        const selectedCardData = canvas.cards.filter((c) => selection.cardIds.has(c.id))
+        if (selectedCardData.length === 0) {
+          const updatedLabels = (canvas.labels ?? []).map((l) => {
+            const orig = origLabels.get(l.id)
+            return orig ? { ...l, x: orig.x + totalDx, y: orig.y + totalDy } : l
+          })
+          const updatedSections = (canvas.sections ?? []).map((sec) => {
+            const orig = origSections.get(sec.id)
+            return orig ? { ...sec, x: orig.x + totalDx, y: orig.y + totalDy } : sec
+          })
           useStore.setState({
             canvases: store.canvases.map((c) =>
               c.id === store.activeCanvasId
@@ -524,8 +534,8 @@ export default function CanvasView() {
           return
         }
 
-        let snapDx = rawDx
-        let snapDy = rawDy
+        let snapOffX = 0
+        let snapOffY = 0
         let bestDistX = SNAP_DIST
         let bestDistY = SNAP_DIST
 
@@ -534,51 +544,51 @@ export default function CanvasView() {
           const ow = other.width
           const oh = other.height ?? 300
 
-          for (const sc of selectedCards) {
-            const scx = sc.x + rawDx
-            const scy = sc.y + rawDy
-            const scr = scx + sc.width
-            const scb = scy + (sc.height ?? 300)
+          for (const sc of selectedCardData) {
+            const orig = origCards.get(sc.id)
+            if (!orig) continue
+            const scx = orig.x + totalDx
+            const scy = orig.y + totalDy
+            const scw = sc.width
+            const sch = sc.height ?? 300
 
             let d: number
 
-            if (goingLeft) {
-              d = Math.abs(scx - (other.x + ow + GAP))
-              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow + GAP - scx) }
-              d = Math.abs(scx - other.x)
-              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - scx) }
-            }
-            if (goingRight) {
-              d = Math.abs(scr - (other.x - GAP))
-              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x - GAP - scr) }
-              d = Math.abs(scr - (other.x + ow))
-              if (d < bestDistX) { bestDistX = d; snapDx = rawDx + (other.x + ow - scr) }
-            }
+            d = Math.abs(scx - (other.x + ow + GAP))
+            if (d < bestDistX) { bestDistX = d; snapOffX = other.x + ow + GAP - scx }
+            d = Math.abs((scx + scw) - (other.x - GAP))
+            if (d < bestDistX) { bestDistX = d; snapOffX = other.x - GAP - scw - scx }
+            d = Math.abs(scx - other.x)
+            if (d < bestDistX) { bestDistX = d; snapOffX = other.x - scx }
+            d = Math.abs((scx + scw) - (other.x + ow))
+            if (d < bestDistX) { bestDistX = d; snapOffX = other.x + ow - scw - scx }
 
-            if (goingUp) {
-              d = Math.abs(scy - other.y)
-              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - scy) }
-              d = Math.abs(scy - (other.y + oh + GAP))
-              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh + GAP - scy) }
-            }
-            if (goingDown) {
-              d = Math.abs(scb - (other.y + oh))
-              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y + oh - scb) }
-              d = Math.abs(scb - (other.y - GAP))
-              if (d < bestDistY) { bestDistY = d; snapDy = rawDy + (other.y - GAP - scb) }
-            }
+            d = Math.abs(scy - other.y)
+            if (d < bestDistY) { bestDistY = d; snapOffY = other.y - scy }
+            d = Math.abs((scy + sch) - (other.y + oh))
+            if (d < bestDistY) { bestDistY = d; snapOffY = other.y + oh - sch - scy }
+            d = Math.abs(scy - (other.y + oh + GAP))
+            if (d < bestDistY) { bestDistY = d; snapOffY = other.y + oh + GAP - scy }
+            d = Math.abs((scy + sch) - (other.y - GAP))
+            if (d < bestDistY) { bestDistY = d; snapOffY = other.y - GAP - sch - scy }
           }
         }
 
-        const updatedCards = canvas.cards.map((c) =>
-          selection.cardIds.has(c.id) ? { ...c, x: c.x + snapDx, y: c.y + snapDy } : c,
-        )
-        const updatedLabels = (canvas.labels ?? []).map((l) =>
-          selection.labelIds.has(l.id) ? { ...l, x: l.x + snapDx, y: l.y + snapDy } : l,
-        )
-        const updatedSections = (canvas.sections ?? []).map((sec) =>
-          selection.sectionIds.has(sec.id) ? { ...sec, x: sec.x + snapDx, y: sec.y + snapDy } : sec,
-        )
+        const finalDx = totalDx + snapOffX
+        const finalDy = totalDy + snapOffY
+
+        const updatedCards = canvas.cards.map((c) => {
+          const orig = origCards.get(c.id)
+          return orig ? { ...c, x: orig.x + finalDx, y: orig.y + finalDy } : c
+        })
+        const updatedLabels = (canvas.labels ?? []).map((l) => {
+          const orig = origLabels.get(l.id)
+          return orig ? { ...l, x: orig.x + finalDx, y: orig.y + finalDy } : l
+        })
+        const updatedSections = (canvas.sections ?? []).map((sec) => {
+          const orig = origSections.get(sec.id)
+          return orig ? { ...sec, x: orig.x + finalDx, y: orig.y + finalDy } : sec
+        })
 
         useStore.setState({
           canvases: store.canvases.map((c) =>
