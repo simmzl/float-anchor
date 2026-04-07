@@ -575,6 +575,7 @@ def main():
                 "y": round(ci.get("y", 0), 2),
                 "width": FA_DEFAULT_WIDTH,
                 "height": est_height,
+                "sourceId": f"hepta:{ci['cardId']}",
             }
 
             cards.append(fa_card)
@@ -620,6 +621,7 @@ def main():
                 "height": sec_h,
                 "color": color,
                 "cardIds": member_fa_ids,
+                "sourceId": f"hepta:{hs['id']}",
             })
 
         fa_labels = []
@@ -654,6 +656,7 @@ def main():
                 "x": round(te.get("x", 0) * COORD_SCALE, 2),
                 "y": round(te.get("y", 0), 2),
                 "width": round(te.get("width", 300) * COORD_SCALE, 0),
+                "sourceId": f"hepta:{te['id']}",
             })
 
         fa_connections = []
@@ -668,6 +671,7 @@ def main():
                     "id": str(uuid.uuid4()),
                     "fromCardId": from_fa,
                     "toCardId": to_fa,
+                    "sourceId": f"hepta:{hc.get('id', '')}",
                 })
 
         canvas = {
@@ -689,6 +693,62 @@ def main():
         total_connections += len(fa_connections)
         print(f"  {wb['name']}: {len(cards)} cards, {len(fa_sections)} sections, {len(fa_labels)} labels, {len(fa_connections)} connections")
 
+    def _merge_list(existing_items, new_items):
+        """Merge imported items into existing list by sourceId.
+        Returns (updated_count, added_count, id_remap).
+        id_remap maps new_item_id -> existing_item_id for items that were updated.
+        """
+        source_map = {}
+        for i, item in enumerate(existing_items):
+            sid = item.get("sourceId")
+            if sid:
+                source_map[sid] = i
+
+        updated = 0
+        added = 0
+        id_remap = {}
+        for new_item in new_items:
+            sid = new_item.get("sourceId")
+            if sid and sid in source_map:
+                old_id = existing_items[source_map[sid]]["id"]
+                id_remap[new_item["id"]] = old_id
+                new_item["id"] = old_id
+                existing_items[source_map[sid]] = new_item
+                updated += 1
+            else:
+                existing_items.append(new_item)
+                added += 1
+        return updated, added, id_remap
+
+    def _merge_canvas(existing_canvas, new_canvas):
+        """Merge new_canvas data into existing_canvas, preserving user-created items."""
+        u_cards, a_cards, card_remap = _merge_list(
+            existing_canvas.get("cards", []), new_canvas.get("cards", [])
+        )
+        u_labels, a_labels, _ = _merge_list(
+            existing_canvas.setdefault("labels", []),
+            new_canvas.get("labels", [])
+        )
+        for sec in new_canvas.get("sections", []):
+            if "cardIds" in sec:
+                sec["cardIds"] = [card_remap.get(cid, cid) for cid in sec["cardIds"]]
+        u_sections, a_sections, _ = _merge_list(
+            existing_canvas.setdefault("sections", []),
+            new_canvas.get("sections", [])
+        )
+        old_conn_src = {c.get("sourceId") for c in existing_canvas.get("connections", []) if c.get("sourceId")}
+        new_conns = new_canvas.get("connections", [])
+        added_conns = 0
+        for nc in new_conns:
+            nc["fromCardId"] = card_remap.get(nc["fromCardId"], nc["fromCardId"])
+            nc["toCardId"] = card_remap.get(nc["toCardId"], nc["toCardId"])
+            sid = nc.get("sourceId")
+            if sid and sid in old_conn_src:
+                continue
+            existing_canvas.setdefault("connections", []).append(nc)
+            added_conns += 1
+        print(f"    Cards: {u_cards} updated, {a_cards} added | Labels: {u_labels} updated, {a_labels} added | Sections: {u_sections} updated, {a_sections} added | Connections: {added_conns} added")
+
     existing_data = None
     if os.path.exists(output_path):
         try:
@@ -707,19 +767,17 @@ def main():
             existing_data = None
 
     if existing_data and isinstance(existing_data.get("canvases"), list):
-        existing_names = {c["name"] for c in existing_data["canvases"]}
+        existing_by_name = {c["name"]: c for c in existing_data["canvases"]}
         new_count = 0
         skip_count = 0
-        replace_count = 0
+        merge_count = 0
         for canvas in canvases:
-            if canvas["name"] in existing_names:
+            existing_canvas = existing_by_name.get(canvas["name"])
+            if existing_canvas:
                 if force_replace:
-                    existing_data["canvases"] = [
-                        c for c in existing_data["canvases"] if c["name"] != canvas["name"]
-                    ]
-                    existing_data["canvases"].append(canvas)
-                    replace_count += 1
-                    print(f"  Replacing canvas: {canvas['name']}")
+                    _merge_canvas(existing_canvas, canvas)
+                    merge_count += 1
+                    print(f"  Merged canvas: {canvas['name']}")
                 else:
                     skip_count += 1
                     print(f"  Skipping duplicate canvas: {canvas['name']}")
@@ -727,8 +785,9 @@ def main():
                 existing_data["canvases"].append(canvas)
                 new_count += 1
         fa_data = existing_data
-        parts = [f"Added {new_count} new"] if new_count else []
-        if replace_count: parts.append(f"replaced {replace_count}")
+        parts = []
+        if new_count: parts.append(f"added {new_count} new")
+        if merge_count: parts.append(f"merged {merge_count}")
         if skip_count: parts.append(f"skipped {skip_count} duplicate(s)")
         print(f"  {', '.join(parts)}")
     else:

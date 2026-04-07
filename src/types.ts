@@ -6,6 +6,7 @@ export interface Card {
   y: number
   width: number
   height?: number
+  sourceId?: string
 }
 
 export interface CanvasLabel {
@@ -15,6 +16,7 @@ export interface CanvasLabel {
   x: number
   y: number
   width: number
+  sourceId?: string
 }
 
 export interface Section {
@@ -26,6 +28,7 @@ export interface Section {
   height: number
   color: string
   cardIds?: string[]
+  sourceId?: string
 }
 
 export interface Connection {
