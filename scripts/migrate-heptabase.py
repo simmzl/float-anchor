@@ -444,18 +444,20 @@ def _is_real_image(filepath: str) -> bool:
 def main():
     global file_metadata
     if len(sys.argv) < 2:
-        print("Usage: python3 scripts/migrate-heptabase.py <heptabase-backup-dir> [--output <path>] [--token <token>]")
+        print("Usage: python3 scripts/migrate-heptabase.py <heptabase-backup-dir> [--output <path>] [--token <token>] [--force]")
         print()
         print("Options:")
         print("  --output <path>    Specify output file path (default: FloatAnchor local storage)")
         print("  --token <token>    Heptabase Bearer token for downloading images.")
         print("                     Get it from browser DevTools: Network tab → any request → Authorization header.")
         print("                     Token expires in ~1 hour. Images are saved locally for offline use.")
+        print("  --force            Replace existing canvases with the same name (for re-importing with token).")
         sys.exit(1)
 
     backup_input = sys.argv[1]
     output_path = None
     hepta_token = None
+    force_replace = "--force" in sys.argv
 
     if "--output" in sys.argv:
         idx = sys.argv.index("--output")
@@ -702,15 +704,27 @@ def main():
         existing_names = {c["name"] for c in existing_data["canvases"]}
         new_count = 0
         skip_count = 0
+        replace_count = 0
         for canvas in canvases:
             if canvas["name"] in existing_names:
-                skip_count += 1
-                print(f"  Skipping duplicate canvas: {canvas['name']}")
+                if force_replace:
+                    existing_data["canvases"] = [
+                        c for c in existing_data["canvases"] if c["name"] != canvas["name"]
+                    ]
+                    existing_data["canvases"].append(canvas)
+                    replace_count += 1
+                    print(f"  Replacing canvas: {canvas['name']}")
+                else:
+                    skip_count += 1
+                    print(f"  Skipping duplicate canvas: {canvas['name']}")
             else:
                 existing_data["canvases"].append(canvas)
                 new_count += 1
         fa_data = existing_data
-        print(f"  Added {new_count} new canvas(es), skipped {skip_count} duplicate(s)")
+        parts = [f"Added {new_count} new"] if new_count else []
+        if replace_count: parts.append(f"replaced {replace_count}")
+        if skip_count: parts.append(f"skipped {skip_count} duplicate(s)")
+        print(f"  {', '.join(parts)}")
     else:
         fa_data = {
             "canvases": canvases,
