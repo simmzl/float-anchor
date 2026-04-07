@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '../store'
 import type { WebDAVConfig } from '../types'
 
@@ -8,6 +8,80 @@ export default function SettingsModal() {
   const setTheme = useStore((s) => s.setTheme)
   const setWebDAVConfig = useStore((s) => s.setWebDAVConfig)
   const setShowSettings = useStore((s) => s.setShowSettings)
+
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'installing' | 'error'>('idle')
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null)
+  const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateInfo, setUpdateInfo] = useState<{ downloadUrl: string; assetName: string } | null>(null)
+  const [currentVersion, setCurrentVersion] = useState('')
+  const checkedRef = useRef(false)
+
+  useEffect(() => {
+    const unsub1 = window.electronAPI.onUpdateAvailable((info) => {
+      setUpdateVersion(info.version)
+      setUpdateInfo({ downloadUrl: info.downloadUrl, assetName: info.assetName })
+      setCurrentVersion(info.currentVersion)
+      const rp = (info as any).resumePercent ?? 0
+      if (rp > 0 && rp < 100) {
+        setUpdateStatus('downloading')
+        setUpdateProgress(rp)
+      } else if (rp >= 100) {
+        setUpdateStatus('downloading')
+        setUpdateProgress(100)
+      } else {
+        setUpdateStatus('available')
+      }
+    })
+    const unsub2 = window.electronAPI.onUpdateProgress((p) => {
+      if (p.stage === 'downloading') {
+        setUpdateStatus('downloading')
+        setUpdateProgress(p.percent)
+      } else if (p.stage === 'installing') {
+        setUpdateStatus('installing')
+        setUpdateProgress(100)
+      } else if (p.stage === 'error') {
+        setUpdateStatus('error')
+      }
+    })
+    return () => { unsub1(); unsub2() }
+  }, [])
+
+  useEffect(() => {
+    if (checkedRef.current) return
+    checkedRef.current = true
+    setUpdateStatus('checking')
+    window.electronAPI.checkUpdate().then((res) => {
+      setCurrentVersion(res.currentVersion)
+      if (res.hasUpdate && res.version) {
+        setUpdateVersion(res.version)
+        setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'available')
+      } else {
+        setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'up-to-date')
+      }
+    }).catch(() => {
+      setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'error')
+    })
+  }, [])
+
+  const handleCheckUpdate = useCallback(() => {
+    setUpdateStatus('checking')
+    window.electronAPI.checkUpdate().then((res) => {
+      setCurrentVersion(res.currentVersion)
+      if (res.hasUpdate && res.version) {
+        setUpdateVersion(res.version)
+        setUpdateStatus('available')
+      } else {
+        setUpdateStatus('up-to-date')
+      }
+    }).catch(() => setUpdateStatus('error'))
+  }, [])
+
+  const handleStartUpdate = useCallback(() => {
+    if (!updateInfo) return
+    setUpdateStatus('downloading')
+    setUpdateProgress(0)
+    window.electronAPI.triggerUpdate(updateInfo.downloadUrl, updateInfo.assetName)
+  }, [updateInfo])
 
   const [server, setServer] = useState(settings.webdav?.server || 'https://dav.jianguoyun.com/dav/')
   const [username, setUsername] = useState(settings.webdav?.username || '')
@@ -132,6 +206,46 @@ export default function SettingsModal() {
               </svg>
               Dark
             </button>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>软件更新</h3>
+          <div className="update-section">
+            <div className="update-version-row">
+              <span className="update-current">当前版本：v{currentVersion || '...'}</span>
+              {updateVersion && updateStatus !== 'up-to-date' && (
+                <span className="update-new-badge">v{updateVersion} 可用</span>
+              )}
+            </div>
+
+            {(updateStatus === 'downloading' || updateStatus === 'installing') && (
+              <div className="update-settings-progress">
+                <div className="update-progress-bar">
+                  <div className="update-progress-fill" style={{ width: `${updateProgress}%` }} />
+                </div>
+                <span className="update-progress-label">
+                  {updateStatus === 'installing' ? '安装中...' : `下载中 ${updateProgress}%`}
+                </span>
+              </div>
+            )}
+
+            <div className="update-settings-actions">
+              <button
+                onClick={handleCheckUpdate}
+                disabled={updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing'}
+              >
+                {updateStatus === 'checking' ? '检查中...' : updateStatus === 'up-to-date' ? '已是最新版本' : '检查更新'}
+              </button>
+              {updateStatus === 'available' && updateInfo && (
+                <button className="primary" onClick={handleStartUpdate}>
+                  更新到 v{updateVersion}
+                </button>
+              )}
+              {updateStatus === 'error' && (
+                <span className="update-error-hint">检查更新失败，请稍后再试</span>
+              )}
+            </div>
           </div>
         </div>
 

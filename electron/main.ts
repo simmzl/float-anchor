@@ -34,7 +34,10 @@ function compareVersions(a: string, b: string): number {
 
 async function httpsGetJSON(url: string): Promise<any> {
   const resp = await net.fetch(url, {
-    headers: { 'User-Agent': 'FloatAnchor-Updater' },
+    headers: {
+      'User-Agent': 'FloatAnchor-Updater',
+      Accept: 'application/vnd.github+json',
+    },
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
@@ -134,13 +137,15 @@ interface ReleaseInfo {
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
 
-async function checkForUpdates() {
+async function checkForUpdates(): Promise<{ hasUpdate: boolean; version?: string; currentVersion: string }> {
   try {
     const release: ReleaseInfo = await httpsGetJSON(
       `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
     )
     const latestVersion = release.tag_name.replace(/^v/, '')
-    if (compareVersions(latestVersion, CURRENT_VERSION) <= 0) return
+    if (compareVersions(latestVersion, CURRENT_VERSION) <= 0) {
+      return { hasUpdate: false, currentVersion: CURRENT_VERSION }
+    }
 
     const platform = process.platform
     const arch = process.arch
@@ -154,7 +159,7 @@ async function checkForUpdates() {
     }
 
     const asset = release.assets.find((a) => a.name === assetName)
-    if (!asset) return
+    if (!asset) return { hasUpdate: false, currentVersion: CURRENT_VERSION }
 
     const tmpDir = path.join(app.getPath('temp'), 'float-anchor-update')
     const destPath = path.join(tmpDir, asset.name)
@@ -168,8 +173,11 @@ async function checkForUpdates() {
       downloadUrl: asset.browser_download_url,
       resumePercent: resumePct,
     })
+
+    return { hasUpdate: true, version: latestVersion, currentVersion: CURRENT_VERSION }
   } catch (err) {
     console.error('Update check failed:', err)
+    return { hasUpdate: false, currentVersion: CURRENT_VERSION }
   }
 }
 
@@ -177,6 +185,10 @@ function startUpdateChecker() {
   setTimeout(() => checkForUpdates(), 3000)
   updateCheckTimer = setInterval(() => checkForUpdates(), 60_000)
 }
+
+ipcMain.handle('check-update', async () => {
+  return checkForUpdates()
+})
 
 ipcMain.handle('get-resume-progress', async (_event, assetName: string) => {
   const tmpDir = path.join(app.getPath('temp'), 'float-anchor-update')

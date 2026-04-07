@@ -10,15 +10,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   winMaximize: () => ipcRenderer.send('win-maximize'),
   winClose: () => ipcRenderer.send('win-close'),
   onUpdateAvailable: (cb: (info: any) => void) => {
-    ipcRenderer.on('update-available', (_e, info) => cb(info))
+    const handler = (_e: any, info: any) => cb(info)
+    ipcRenderer.on('update-available', handler)
+    return () => { ipcRenderer.removeListener('update-available', handler) }
   },
   onUpdateProgress: (cb: (progress: any) => void) => {
-    ipcRenderer.on('update-progress', (_e, progress) => cb(progress))
+    const handler = (_e: any, progress: any) => cb(progress)
+    ipcRenderer.on('update-progress', handler)
+    return () => { ipcRenderer.removeListener('update-progress', handler) }
   },
   triggerUpdate: (downloadUrl: string, assetName: string) =>
     ipcRenderer.invoke('trigger-update', downloadUrl, assetName),
   getResumeProgress: (assetName: string) =>
     ipcRenderer.invoke('get-resume-progress', assetName),
+  checkUpdate: () => ipcRenderer.invoke('check-update'),
   webdavTest: (config: any) => ipcRenderer.invoke('webdav-test', config),
   webdavUpload: (config: any) => ipcRenderer.invoke('webdav-upload', config),
   webdavDownload: (config: any) => ipcRenderer.invoke('webdav-download', config),

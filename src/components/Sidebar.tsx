@@ -8,7 +8,7 @@ function UpdateBanner() {
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null)
 
   useEffect(() => {
-    window.electronAPI.onUpdateAvailable((info) => {
+    const unsub1 = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateInfo({ version: info.version, downloadUrl: info.downloadUrl, assetName: info.assetName })
       setDismissed(false)
       if ((info as any).resumePercent > 0 && (info as any).resumePercent < 100) {
@@ -17,9 +17,10 @@ function UpdateBanner() {
         setProgress(null)
       }
     })
-    window.electronAPI.onUpdateProgress((p) => {
+    const unsub2 = window.electronAPI.onUpdateProgress((p) => {
       setProgress({ stage: p.stage, percent: p.percent })
     })
+    return () => { unsub1(); unsub2() }
   }, [])
 
   const handleUpdate = useCallback(() => {
