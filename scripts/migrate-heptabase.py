@@ -143,8 +143,8 @@ def tiptap_to_markdown(node, depth=0) -> str:
         src = attrs.get("src") or ""
         alt = attrs.get("alt") or ""
         file_id = attrs.get("fileId") or ""
-        if not src and file_id:
-            src = f"https://app.heptabase.com/api/files/{file_id}"
+        if file_id:
+            src = f"fa-img://{file_id}.png"
         if src:
             return f"![{alt}]({src})"
         return ""
@@ -222,11 +222,11 @@ def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> l
                 if token and images_dir:
                     local_path = download_heptabase_image(fid, images_dir, token)
                     if local_path:
-                        urls.append(local_path.replace(" ", "%20"))
+                        urls.append(f"fa-img://{fid}.png")
                     else:
-                        urls.append(f"https://app.heptabase.com/api/files/{fid}")
+                        urls.append("")
                 else:
-                    urls.append(f"https://app.heptabase.com/api/files/{fid}")
+                    urls.append("")
             elif src:
                 urls.append(src)
         for c in node.get("content", []):
@@ -236,14 +236,20 @@ def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> l
 
 
 def fix_relative_image_paths(md_text: str, image_urls: list) -> str:
-    """Replace relative image paths (./xxx-assets/...) with actual URLs or local paths."""
+    """Replace relative image paths (./xxx-assets/...) with fa-img:// URLs or remove if empty."""
     if not image_urls:
         return md_text
 
     url_iter = iter(image_urls)
+    def replacer(m):
+        url = next(url_iter, "")
+        if not url:
+            return ""
+        return f"![{m.group(1)}]({url})"
+
     return re.sub(
         r'!\[([^\]]*)\]\((\./[^)]+|\.\.\/[^)]+)\)',
-        lambda m: f"![{m.group(1)}]({next(url_iter, m.group(2))})",
+        replacer,
         md_text,
     )
 

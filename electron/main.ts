@@ -548,16 +548,31 @@ ipcMain.on('win-close', (e) => {
   BrowserWindow.fromWebContents(e.sender)?.close()
 })
 
-protocol.registerSchemesAsPrivileged([{
-  scheme: 'fa-image',
-  privileges: { standard: true, secure: true, bypassCSP: true, supportFetchAPI: true, stream: true },
-}])
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'fa-image', privileges: { standard: true, secure: true, bypassCSP: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'fa-img', privileges: { standard: true, secure: true, bypassCSP: true, supportFetchAPI: true, stream: true } },
+])
 
 app.whenReady().then(() => {
   protocol.handle('fa-image', (request) => {
     try {
       const url = new URL(request.url)
       const filePath = decodeURIComponent(url.pathname)
+      return net.fetch(new URL(`file://${filePath}`).href)
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
+
+  protocol.handle('fa-img', (request) => {
+    try {
+      const url = new URL(request.url)
+      const fileName = decodeURIComponent(url.pathname).replace(/^\/+/, '') || url.hostname
+      const { dataDir: dir } = getDataPaths()
+      const filePath = path.join(dir, 'images', fileName)
+      if (!fs.existsSync(filePath)) {
+        return new Response('Not found', { status: 404 })
+      }
       return net.fetch(new URL(`file://${filePath}`).href)
     } catch {
       return new Response('Not found', { status: 404 })
