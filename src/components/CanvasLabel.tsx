@@ -5,6 +5,7 @@ import type { CanvasLabel as LabelType } from '../types'
 interface Props {
   label: LabelType
   scale: number
+  selected?: boolean
 }
 
 const LEVEL_SIZES: Record<number, { fontSize: number; fontWeight: number }> = {
@@ -21,7 +22,7 @@ function parseMarkdownHeading(text: string): { level: 0 | 1 | 2 | 3 | 4; cleanTe
   return { level: 0, cleanText: text }
 }
 
-const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, scale }: Props) {
+const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, scale, selected }: Props) {
   const updateLabel = useStore((s) => s.updateLabel)
   const deleteLabel = useStore((s) => s.deleteLabel)
   const moveLabel = useStore((s) => s.moveLabel)
@@ -68,6 +69,7 @@ const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, s
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isEditing || e.button !== 0) return
+    if (selected) return
     e.stopPropagation()
     e.preventDefault()
     setIsDragging(true)
@@ -91,11 +93,11 @@ const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, s
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [isEditing, label.id, label.x, label.y, scale, moveLabel])
+  }, [isEditing, label.id, label.x, label.y, scale, moveLabel, selected])
 
   return (
     <div
-      className={`canvas-label ${isDragging ? 'dragging' : ''}`}
+      className={`canvas-label ${isDragging ? 'dragging' : ''} ${selected ? 'multi-selected' : ''}`}
       style={{ left: label.x, top: label.y, width: label.width }}
       onMouseDown={handleDragStart}
       onClick={handleClick}

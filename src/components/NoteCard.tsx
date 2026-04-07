@@ -9,6 +9,7 @@ interface Props {
   cardId: string
   scale: number
   highlight?: boolean
+  selected?: boolean
 }
 
 const remarkPlugins = [remarkGfm]
@@ -61,7 +62,7 @@ function FaCardLink({ targetId }: { targetId: string }) {
   )
 }
 
-const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight }: Props) {
+const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, selected }: Props) {
   const card = useCardById(cardId)
   const isEditing = useIsEditing(cardId)
   const { moveCard, deleteCard, updateCard, setEditingCard } = useCardActions()
@@ -186,6 +187,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight }: Prop
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0 || !card) return
+      if (selected) return
       e.stopPropagation()
       e.preventDefault()
       setIsDragging(true)
@@ -211,7 +213,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight }: Prop
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
     },
-    [cardId, card?.x, card?.y, scale, moveCard],
+    [cardId, card?.x, card?.y, scale, moveCard, selected],
   )
 
   const handleDoubleClick = useCallback(
@@ -312,7 +314,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight }: Prop
     <div
       ref={cardRef}
       data-card-id={cardId}
-      className={`note-card ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''} ${isEditing ? 'editing' : ''} ${highlight ? 'highlight-breathe' : ''}`}
+      className={`note-card ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''} ${isEditing ? 'editing' : ''} ${highlight ? 'highlight-breathe' : ''} ${selected ? 'multi-selected' : ''}`}
       style={{
         left: card.x,
         top: card.y,

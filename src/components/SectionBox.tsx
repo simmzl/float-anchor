@@ -5,12 +5,13 @@ import type { Section } from '../types'
 interface Props {
   section: Section
   scale: number
+  selected?: boolean
 }
 
 const SECTION_PAD = 24
 const HEADER_H = 36
 
-const SectionBox = React.memo(function SectionBox({ section, scale }: Props) {
+const SectionBox = React.memo(function SectionBox({ section, scale, selected }: Props) {
   const updateSection = useStore((s) => s.updateSection)
   const deleteSection = useStore((s) => s.deleteSection)
   const moveSection = useStore((s) => s.moveSection)
@@ -187,7 +188,7 @@ const SectionBox = React.memo(function SectionBox({ section, scale }: Props) {
 
   return (
     <div
-      className={`section-box ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''}`}
+      className={`section-box ${isDragging ? 'dragging' : ''} ${isResizing ? 'resizing' : ''} ${selected ? 'multi-selected' : ''}`}
       data-section-id={section.id}
       style={{
         left: section.x,

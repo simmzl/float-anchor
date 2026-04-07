@@ -5,13 +5,74 @@ import CanvasLabelComponent from './CanvasLabel'
 import SectionBox from './SectionBox'
 import ContextMenu from './ContextMenu'
 import MoveToModal from './MoveToModal'
-import type { Card, Connection } from '../types'
+import type { Card, Connection, Section, CanvasLabel } from '../types'
 import type { MenuItem } from './ContextMenu'
 
 const MIN_SCALE = 0.15
 const MAX_SCALE = 3
 const VIEWPORT_PADDING = 800
 const CULL_THROTTLE = 50
+
+interface SelectionSet {
+  cardIds: Set<string>
+  labelIds: Set<string>
+  sectionIds: Set<string>
+}
+
+function emptySelection(): SelectionSet {
+  return { cardIds: new Set(), labelIds: new Set(), sectionIds: new Set() }
+}
+
+function selectionEmpty(sel: SelectionSet): boolean {
+  return sel.cardIds.size === 0 && sel.labelIds.size === 0 && sel.sectionIds.size === 0
+}
+
+function rectsIntersect(
+  ax: number, ay: number, aw: number, ah: number,
+  bx: number, by: number, bw: number, bh: number,
+): boolean {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
+}
+
+function rectContains(
+  ox: number, oy: number, ow: number, oh: number,
+  ix: number, iy: number, iw: number, ih: number,
+): boolean {
+  return ix >= ox && iy >= oy && ix + iw <= ox + ow && iy + ih <= oy + oh
+}
+
+function computeSelection(
+  selRect: { x: number; y: number; w: number; h: number },
+  cards: Card[],
+  labels: CanvasLabel[],
+  sections: Section[],
+): SelectionSet {
+  const sel = emptySelection()
+
+  for (const card of cards) {
+    const ch = card.height ?? 200
+    if (rectsIntersect(selRect.x, selRect.y, selRect.w, selRect.h, card.x, card.y, card.width, ch)) {
+      sel.cardIds.add(card.id)
+    }
+  }
+
+  for (const label of labels) {
+    const lh = 40
+    if (rectsIntersect(selRect.x, selRect.y, selRect.w, selRect.h, label.x, label.y, label.width, lh)) {
+      sel.labelIds.add(label.id)
+    }
+  }
+
+  for (const sec of sections) {
+    if (rectContains(selRect.x, selRect.y, selRect.w, selRect.h, sec.x, sec.y, sec.width, sec.height)) {
+      sel.sectionIds.add(sec.id)
+      const memberIds = sec.cardIds ?? []
+      for (const cid of memberIds) sel.cardIds.add(cid)
+    }
+  }
+
+  return sel
+}
 
 function findDensestCenter(cards: Card[]): { cx: number; cy: number; clusterCards: Card[] } | null {
   if (cards.length === 0) return null
@@ -107,6 +168,13 @@ export default function CanvasView() {
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null)
   const [hoveredConn, setHoveredConn] = useState<string | null>(null)
+
+  const [selection, setSelection] = useState<SelectionSet>(emptySelection)
+  const [lassoRect, setLassoRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const lassoStart = useRef<{ cx: number; cy: number } | null>(null)
+  const isLassoing = useRef(false)
+  const [isMultiDragging, setIsMultiDragging] = useState(false)
+  const multiDragStart = useRef<{ cx: number; cy: number } | null>(null)
 
   useEffect(() => {
     if (!highlightCardId) return
@@ -277,8 +345,59 @@ export default function CanvasView() {
         }
       }
       setConnectingFrom(null)
+      return
     }
-  }, [connectingFrom, addConnection])
+    if (e.button === 0) {
+      const target = e.target as HTMLElement
+      if (target.closest('.note-card') || target.closest('.canvas-label') || target.closest('.section-header') ||
+          target.closest('.section-resize-handle') || target.closest('.card-resize-handle') ||
+          target.closest('.conn-delete-btn') || target.closest('.canvas-toolbar')) return
+
+      if (!selectionEmpty(selection)) {
+        const coords = toCanvasCoords(e.clientX, e.clientY)
+        let hitSelected = false
+
+        for (const cid of selection.cardIds) {
+          const c = cards.find((cd) => cd.id === cid)
+          if (c && coords.x >= c.x && coords.x <= c.x + c.width &&
+              coords.y >= c.y && coords.y <= c.y + (c.height ?? 200)) {
+            hitSelected = true; break
+          }
+        }
+        if (!hitSelected) {
+          for (const lid of selection.labelIds) {
+            const l = labels.find((lb) => lb.id === lid)
+            if (l && coords.x >= l.x && coords.x <= l.x + l.width &&
+                coords.y >= l.y && coords.y <= l.y + 40) {
+              hitSelected = true; break
+            }
+          }
+        }
+        if (!hitSelected) {
+          for (const sid of selection.sectionIds) {
+            const sec = sections.find((s) => s.id === sid)
+            if (sec && coords.x >= sec.x && coords.x <= sec.x + sec.width &&
+                coords.y >= sec.y && coords.y <= sec.y + sec.height) {
+              hitSelected = true; break
+            }
+          }
+        }
+
+        if (hitSelected) {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsMultiDragging(true)
+          multiDragStart.current = { cx: e.clientX, cy: e.clientY }
+          return
+        }
+      }
+
+      setSelection(emptySelection())
+      const canvasCoords = toCanvasCoords(e.clientX, e.clientY)
+      lassoStart.current = { cx: canvasCoords.x, cy: canvasCoords.y }
+      isLassoing.current = false
+    }
+  }, [connectingFrom, addConnection, selection, cards, labels, sections, toCanvasCoords])
 
   useEffect(() => {
     if (!isPanDragging) return
@@ -315,6 +434,112 @@ export default function CanvasView() {
   }, [])
 
   useEffect(() => {
+    if (lassoStart.current === null && !isLassoing.current) return
+    const onMove = (e: MouseEvent) => {
+      if (!lassoStart.current) return
+      const cur = toCanvasCoords(e.clientX, e.clientY)
+      const sx = lassoStart.current.cx
+      const sy = lassoStart.current.cy
+      const dx = Math.abs(cur.x - sx)
+      const dy = Math.abs(cur.y - sy)
+      if (!isLassoing.current && dx < 4 && dy < 4) return
+      isLassoing.current = true
+      const rx = Math.min(sx, cur.x)
+      const ry = Math.min(sy, cur.y)
+      const rw = Math.abs(cur.x - sx)
+      const rh = Math.abs(cur.y - sy)
+      setLassoRect({ x: rx, y: ry, w: rw, h: rh })
+    }
+    const onUp = () => {
+      if (isLassoing.current && lassoRect) {
+        const sel = computeSelection(lassoRect, cards, labels, sections)
+        setSelection(sel)
+      }
+      lassoStart.current = null
+      isLassoing.current = false
+      setLassoRect(null)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  })
+
+  useEffect(() => {
+    if (!isMultiDragging) return
+    const s = scaleVal.current
+    let prevX = multiDragStart.current!.cx
+    let prevY = multiDragStart.current!.cy
+    let dragRaf = 0
+    const onMove = (e: MouseEvent) => {
+      cancelAnimationFrame(dragRaf)
+      const curX = e.clientX
+      const curY = e.clientY
+      const ddx = (curX - prevX) / s
+      const ddy = (curY - prevY) / s
+      prevX = curX
+      prevY = curY
+      dragRaf = requestAnimationFrame(() => {
+        const store = useStore.getState()
+        const canvas = store.canvases.find((c) => c.id === store.activeCanvasId)
+        if (!canvas) return
+
+        const updatedCards = canvas.cards.map((c) =>
+          selection.cardIds.has(c.id) ? { ...c, x: c.x + ddx, y: c.y + ddy } : c,
+        )
+        const updatedLabels = (canvas.labels ?? []).map((l) =>
+          selection.labelIds.has(l.id) ? { ...l, x: l.x + ddx, y: l.y + ddy } : l,
+        )
+        const updatedSections = (canvas.sections ?? []).map((sec) =>
+          selection.sectionIds.has(sec.id) ? { ...sec, x: sec.x + ddx, y: sec.y + ddy } : sec,
+        )
+
+        useStore.setState({
+          canvases: store.canvases.map((c) =>
+            c.id === store.activeCanvasId
+              ? { ...c, cards: updatedCards, labels: updatedLabels, sections: updatedSections }
+              : c,
+          ),
+        })
+      })
+    }
+    const onUp = () => {
+      cancelAnimationFrame(dragRaf)
+      setIsMultiDragging(false)
+      multiDragStart.current = null
+      useStore.getState().persist()
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [isMultiDragging, selection])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (connectingFrom) setConnectingFrom(null)
+        if (!selectionEmpty(selection)) setSelection(emptySelection())
+      }
+      if (e.key === 'Backspace' && connectingFrom) {
+        const last = connections[connections.length - 1]
+        if (last) deleteConnection(last.id)
+        setConnectingFrom(null)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [connectingFrom, connections, deleteConnection, selection])
+
+  useEffect(() => {
     if (!connectingFrom) {
       setConnectingMouse(null)
       return
@@ -323,21 +548,9 @@ export default function CanvasView() {
       const coords = toCanvasCoords(e.clientX, e.clientY)
       setConnectingMouse(coords)
     }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setConnectingFrom(null)
-      if (e.key === 'Backspace') {
-        const last = connections[connections.length - 1]
-        if (last) deleteConnection(last.id)
-        setConnectingFrom(null)
-      }
-    }
     document.addEventListener('mousemove', onMove)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [connectingFrom, connections, deleteConnection, toCanvasCoords])
+    return () => document.removeEventListener('mousemove', onMove)
+  }, [connectingFrom, toCanvasCoords])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -469,10 +682,14 @@ export default function CanvasView() {
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement
       if (target.closest('.note-card')) return
+      if (!selectionEmpty(selection)) {
+        setSelection(emptySelection())
+        return
+      }
       const coords = toCanvasCoords(e.clientX, e.clientY)
       addCard(coords.x, coords.y)
     },
-    [addCard, toCanvasCoords],
+    [addCard, toCanvasCoords, selection],
   )
 
   const handleAddCard = () => {
@@ -637,11 +854,11 @@ export default function CanvasView() {
           style={{ transform: 'translate3d(0,0,0) scale(1)', transformOrigin: '0 0' }}
         >
           {sections.map((sec) => (
-            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} />
+            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} selected={selection.sectionIds.has(sec.id)} />
           ))}
 
           {labels.map((label) => (
-            <CanvasLabelComponent key={label.id} label={label} scale={scaleVal.current} />
+            <CanvasLabelComponent key={label.id} label={label} scale={scaleVal.current} selected={selection.labelIds.has(label.id)} />
           ))}
 
           <svg className="connections-layer">
@@ -705,6 +922,7 @@ export default function CanvasView() {
                 cardId={card.id}
                 scale={scaleVal.current}
                 highlight={highlightCardId === card.id}
+                selected={selection.cardIds.has(card.id)}
               />
             ) : (
               <div
@@ -719,6 +937,18 @@ export default function CanvasView() {
                 }}
               />
             ),
+          )}
+
+          {lassoRect && (
+            <div
+              className="lasso-rect"
+              style={{
+                left: lassoRect.x,
+                top: lassoRect.y,
+                width: lassoRect.w,
+                height: lassoRect.h,
+              }}
+            />
           )}
         </div>
 
