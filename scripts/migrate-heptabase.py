@@ -681,10 +681,41 @@ def main():
         total_connections += len(fa_connections)
         print(f"  {wb['name']}: {len(cards)} cards, {len(fa_sections)} sections, {len(fa_labels)} labels, {len(fa_connections)} connections")
 
-    fa_data = {
-        "canvases": canvases,
-        "activeCanvasId": canvases[0]["id"] if canvases else None,
-    }
+    existing_data = None
+    if os.path.exists(output_path):
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+            if isinstance(existing_data, dict) and "canvases" in existing_data:
+                existing_canvases = existing_data["canvases"]
+                print(f"\nFound existing data with {len(existing_canvases)} canvas(es) — merging...")
+                backup_path = output_path + ".bak"
+                with open(backup_path, "w", encoding="utf-8") as bf:
+                    json.dump(existing_data, bf, ensure_ascii=False, indent=2)
+                print(f"  Backup saved to {backup_path}")
+            else:
+                existing_data = None
+        except (json.JSONDecodeError, IOError):
+            existing_data = None
+
+    if existing_data and isinstance(existing_data.get("canvases"), list):
+        existing_names = {c["name"] for c in existing_data["canvases"]}
+        new_count = 0
+        skip_count = 0
+        for canvas in canvases:
+            if canvas["name"] in existing_names:
+                skip_count += 1
+                print(f"  Skipping duplicate canvas: {canvas['name']}")
+            else:
+                existing_data["canvases"].append(canvas)
+                new_count += 1
+        fa_data = existing_data
+        print(f"  Added {new_count} new canvas(es), skipped {skip_count} duplicate(s)")
+    else:
+        fa_data = {
+            "canvases": canvases,
+            "activeCanvasId": canvases[0]["id"] if canvases else None,
+        }
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
