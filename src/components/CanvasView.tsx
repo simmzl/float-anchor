@@ -331,6 +331,47 @@ export default function CanvasView() {
     }
   }, [])
 
+  const lassoRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
+
+  const startLassoListeners = useCallback(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!lassoStart.current) return
+      const cur = toCanvasCoords(e.clientX, e.clientY)
+      const sx = lassoStart.current.cx
+      const sy = lassoStart.current.cy
+      const dx = Math.abs(cur.x - sx)
+      const dy = Math.abs(cur.y - sy)
+      if (!isLassoing.current && dx < 4 && dy < 4) return
+      isLassoing.current = true
+      const rx = Math.min(sx, cur.x)
+      const ry = Math.min(sy, cur.y)
+      const rw = Math.abs(cur.x - sx)
+      const rh = Math.abs(cur.y - sy)
+      const rect = { x: rx, y: ry, w: rw, h: rh }
+      lassoRectRef.current = rect
+      setLassoRect(rect)
+    }
+    const onUp = () => {
+      if (isLassoing.current && lassoRectRef.current) {
+        const store = useStore.getState()
+        const canvas = store.canvases.find((c) => c.id === store.activeCanvasId)
+        const curCards = canvas?.cards ?? []
+        const curLabels = canvas?.labels ?? []
+        const curSections = canvas?.sections ?? []
+        const sel = computeSelection(lassoRectRef.current, curCards, curLabels, curSections)
+        setSelection(sel)
+      }
+      lassoStart.current = null
+      isLassoing.current = false
+      lassoRectRef.current = null
+      setLassoRect(null)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [toCanvasCoords])
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) {
       e.preventDefault()
@@ -407,8 +448,9 @@ export default function CanvasView() {
       const canvasCoords = toCanvasCoords(e.clientX, e.clientY)
       lassoStart.current = { cx: canvasCoords.x, cy: canvasCoords.y }
       isLassoing.current = false
+      startLassoListeners()
     }
-  }, [connectingFrom, addConnection, selection, cards, labels, sections, toCanvasCoords])
+  }, [connectingFrom, addConnection, selection, cards, labels, sections, toCanvasCoords, startLassoListeners])
 
   useEffect(() => {
     if (!isPanDragging) return
@@ -434,42 +476,6 @@ export default function CanvasView() {
       document.removeEventListener('mouseup', onUp)
     }
   }, [isPanDragging, applyTransform, scheduleCull])
-
-  useEffect(() => {
-    if (lassoStart.current === null && !isLassoing.current) return
-    const onMove = (e: MouseEvent) => {
-      if (!lassoStart.current) return
-      const cur = toCanvasCoords(e.clientX, e.clientY)
-      const sx = lassoStart.current.cx
-      const sy = lassoStart.current.cy
-      const dx = Math.abs(cur.x - sx)
-      const dy = Math.abs(cur.y - sy)
-      if (!isLassoing.current && dx < 4 && dy < 4) return
-      isLassoing.current = true
-      const rx = Math.min(sx, cur.x)
-      const ry = Math.min(sy, cur.y)
-      const rw = Math.abs(cur.x - sx)
-      const rh = Math.abs(cur.y - sy)
-      setLassoRect({ x: rx, y: ry, w: rw, h: rh })
-    }
-    const onUp = () => {
-      if (isLassoing.current && lassoRect) {
-        const sel = computeSelection(lassoRect, cards, labels, sections)
-        setSelection(sel)
-      }
-      lassoStart.current = null
-      isLassoing.current = false
-      setLassoRect(null)
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-  })
 
   useEffect(() => {
     if (!isMultiDragging) return
