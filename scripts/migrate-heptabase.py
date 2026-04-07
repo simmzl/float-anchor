@@ -196,19 +196,19 @@ def load_card_library_md(card_lib_dir: str) -> dict:
     return result
 
 
-def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> list:
+def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> tuple:
     """Extract ordered list of image URLs from a card's TipTap JSON content.
     
-    If token is provided, downloads images to images_dir and returns local paths.
-    Otherwise returns Heptabase API URLs.
+    Returns (urls, stats) where stats = {"found": N, "downloaded": N, "cached": N, "failed": N, "skipped": N}
     """
+    stats = {"found": 0, "downloaded": 0, "cached": 0, "failed": 0, "skipped": 0}
     raw = card.get("content", "")
     if not raw:
-        return []
+        return [], stats
     try:
         doc = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
-        return []
+        return [], stats
 
     urls = []
     def walk(node):
@@ -219,20 +219,27 @@ def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> l
             fid = attrs.get("fileId", "")
             src = attrs.get("src", "")
             if fid:
+                stats["found"] += 1
                 if token and images_dir:
-                    local_path = download_heptabase_image(fid, images_dir, token)
-                    if local_path:
+                    status, _ = download_heptabase_image(fid, images_dir, token)
+                    if status == "ok":
+                        stats["downloaded"] += 1
+                        urls.append(f"fa-img://{fid}.png")
+                    elif status == "cached":
+                        stats["cached"] += 1
                         urls.append(f"fa-img://{fid}.png")
                     else:
+                        stats["failed"] += 1
                         urls.append("")
                 else:
+                    stats["skipped"] += 1
                     urls.append("")
             elif src:
                 urls.append(src)
         for c in node.get("content", []):
             walk(c)
     walk(doc)
-    return urls
+    return urls, stats
 
 
 def fix_relative_image_paths(md_text: str, image_urls: list) -> str:
@@ -400,30 +407,51 @@ def default_output_path() -> str:
 file_metadata = {}
 
 
-def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> str:
-    """Download an image from Heptabase via presigned S3 URL."""
+def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> tuple:
+    """Download an image from Heptabase via presigned S3 URL.
+    Returns (status, path_or_error):
+      ("cached", path)  - already exists locally
+      ("ok", path)      - newly downloaded
+      ("fail", reason)  - download failed
+    """
     import urllib.request
     dest_path = os.path.join(dest_dir, f"{file_id}.png")
     if os.path.exists(dest_path) and _is_real_image(dest_path):
-        return dest_path
+        return ("cached", dest_path)
     try:
         body = json.dumps({"token": token, "fileId": file_id, "type": "image/png", "permissionCheckMode": "public"}).encode()
         req = urllib.request.Request("https://api.heptabase.com/v1/file", data=body,
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as resp:
-            signed_url = json.loads(resp.read().decode())["signedUrl"]
+            resp_data = resp.read().decode()
+            resp_json = json.loads(resp_data)
+            signed_url = resp_json.get("signedUrl")
+            if not signed_url:
+                reason = f"API returned no signedUrl: {resp_data[:200]}"
+                print(f"    [FAIL] image {file_id}: {reason}")
+                return ("fail", reason)
         req2 = urllib.request.Request(signed_url)
         with urllib.request.urlopen(req2, timeout=30) as resp2:
             data = resp2.read()
         if not _is_image_data(data):
-            print(f"    Warning: {file_id} returned non-image data ({len(data)} bytes)")
-            return ""
+            reason = f"non-image data ({len(data)} bytes), possible HTML error page"
+            print(f"    [FAIL] image {file_id}: {reason}")
+            return ("fail", reason)
         with open(dest_path, "wb") as f:
             f.write(data)
-        return dest_path
+        return ("ok", dest_path)
+    except urllib.error.HTTPError as e:
+        reason = f"HTTP {e.code} {e.reason}"
+        print(f"    [FAIL] image {file_id}: {reason}")
+        return ("fail", reason)
+    except urllib.error.URLError as e:
+        reason = f"network error: {e.reason}"
+        print(f"    [FAIL] image {file_id}: {reason}")
+        return ("fail", reason)
     except Exception as e:
-        print(f"    Warning: failed to download {file_id}: {e}")
-        return ""
+        reason = str(e)
+        print(f"    [FAIL] image {file_id}: {reason}")
+        return ("fail", reason)
 
 
 def _is_image_data(data: bytes) -> bool:
@@ -542,7 +570,7 @@ def main():
     total_sections = 0
     total_labels = 0
     total_connections = 0
-    total_images_downloaded = 0
+    total_img = {"found": 0, "downloaded": 0, "cached": 0, "failed": 0, "skipped": 0}
 
     for wb in active_wbs:
         canvas_id = str(uuid.uuid4())
@@ -550,6 +578,7 @@ def main():
 
         ci_id_to_fa_id = {}
         cards = []
+        wb_img = {"found": 0, "downloaded": 0, "cached": 0, "failed": 0, "skipped": 0}
 
         for ci in instances:
             card_data = card_map.get(ci["cardId"])
@@ -558,7 +587,9 @@ def main():
 
             title = card_data.get("title", "")
             md_content = get_card_markdown(card_data, md_library)
-            image_urls = extract_image_file_ids(card_data, hepta_token, images_dir)
+            image_urls, img_stats = extract_image_file_ids(card_data, hepta_token, images_dir)
+            for k in wb_img:
+                wb_img[k] += img_stats[k]
             md_content = fix_relative_image_paths(md_content, image_urls)
             body = strip_first_heading(md_content, title) if title else md_content
 
@@ -691,7 +722,19 @@ def main():
         total_sections += len(fa_sections)
         total_labels += len(fa_labels)
         total_connections += len(fa_connections)
-        print(f"  {wb['name']}: {len(cards)} cards, {len(fa_sections)} sections, {len(fa_labels)} labels, {len(fa_connections)} connections")
+        for k in total_img:
+            total_img[k] += wb_img[k]
+
+        img_parts = []
+        if wb_img["found"]:
+            ok = wb_img["downloaded"] + wb_img["cached"]
+            img_parts.append(f"{ok}/{wb_img['found']} images")
+            if wb_img["failed"]:
+                img_parts.append(f"{wb_img['failed']} failed")
+        line = f"  {wb['name']}: {len(cards)} cards, {len(fa_sections)} sections, {len(fa_labels)} labels, {len(fa_connections)} connections"
+        if img_parts:
+            line += f", {', '.join(img_parts)}"
+        print(line)
 
     def _merge_list(existing_items, new_items):
         """Merge imported items into existing list by sourceId.
@@ -806,6 +849,15 @@ def main():
     print(f"  Total sections: {total_sections}")
     print(f"  Total labels: {total_labels}")
     print(f"  Total connections: {total_connections}")
+    if total_img["found"]:
+        ok = total_img["downloaded"] + total_img["cached"]
+        print(f"  Total images: {ok}/{total_img['found']} (downloaded: {total_img['downloaded']}, cached: {total_img['cached']}, failed: {total_img['failed']})")
+        if total_img["failed"]:
+            print(f"  ⚠ {total_img['failed']} image(s) failed to download — see [FAIL] messages above for details")
+    elif hepta_token:
+        print(f"  Total images: 0 (no images found in cards)")
+    else:
+        print(f"  Total images: skipped (no --token provided)")
     print(f"  Output: {output_path}")
 
 
