@@ -61,6 +61,7 @@ const SectionBox = React.memo(function SectionBox({ section, scale, selected }: 
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isEditing || e.button !== 0) return
+    if (selected) return
     e.stopPropagation()
     e.preventDefault()
     setIsDragging(true)
@@ -88,7 +89,7 @@ const SectionBox = React.memo(function SectionBox({ section, scale, selected }: 
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [isEditing, section.id, scale, moveSection])
+  }, [isEditing, section.id, scale, moveSection, selected])
 
   const handleResizeStart = useCallback((e: React.MouseEvent, corner: 'br' | 'bl' | 'tr' | 'tl') => {
     if (e.button !== 0) return

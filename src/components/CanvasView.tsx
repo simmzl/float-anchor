@@ -358,9 +358,6 @@ export default function CanvasView() {
     }
     if (e.button === 0) {
       const target = e.target as HTMLElement
-      if (target.closest('.note-card') || target.closest('.canvas-label') || target.closest('.section-header') ||
-          target.closest('.section-resize-handle') || target.closest('.card-resize-handle') ||
-          target.closest('.conn-delete-btn') || target.closest('.canvas-toolbar')) return
 
       if (!selectionEmpty(selection)) {
         const coords = toCanvasCoords(e.clientX, e.clientY)
@@ -399,9 +396,14 @@ export default function CanvasView() {
           multiDragStart.current = { cx: e.clientX, cy: e.clientY }
           return
         }
+
+        setSelection(emptySelection())
       }
 
-      setSelection(emptySelection())
+      if (target.closest('.note-card') || target.closest('.canvas-label') || target.closest('.section-header') ||
+          target.closest('.section-resize-handle') || target.closest('.card-resize-handle') ||
+          target.closest('.conn-delete-btn') || target.closest('.canvas-toolbar')) return
+
       const canvasCoords = toCanvasCoords(e.clientX, e.clientY)
       lassoStart.current = { cx: canvasCoords.x, cy: canvasCoords.y }
       isLassoing.current = false
