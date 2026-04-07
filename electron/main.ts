@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { exec } from 'node:child_process'
 
 let dataDir = ''
@@ -558,7 +559,7 @@ app.whenReady().then(() => {
     try {
       const url = new URL(request.url)
       const filePath = decodeURIComponent(url.pathname)
-      return net.fetch(new URL(`file://${filePath}`).href)
+      return net.fetch(pathToFileURL(filePath).href)
     } catch {
       return new Response('Not found', { status: 404 })
     }
@@ -573,7 +574,7 @@ app.whenReady().then(() => {
       if (!fs.existsSync(filePath)) {
         return new Response('Not found', { status: 404 })
       }
-      return net.fetch(new URL(`file://${filePath}`).href)
+      return net.fetch(pathToFileURL(filePath).href)
     } catch {
       return new Response('Not found', { status: 404 })
     }
