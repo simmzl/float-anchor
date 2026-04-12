@@ -14,11 +14,35 @@ interface Props {
 
 const remarkPlugins = [remarkGfm]
 
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff']
+
+function getStoredImageName(url: string): string | null {
+  let decoded = url.trim()
+  try {
+    decoded = decodeURIComponent(decoded)
+  } catch {}
+
+  const normalized = decoded.replace(/\\/g, '/')
+  const fileName = normalized.split(/[?#]/)[0].split('/').pop() || ''
+  const lower = normalized.toLowerCase()
+  const ext = fileName.slice(fileName.lastIndexOf('.')).toLowerCase()
+  const looksLikeStoredImagePath = (
+    lower.includes('/float-anchor/data/images/') ||
+    lower.includes('/floatanchor/data/images/') ||
+    lower.includes('/application support/float-anchor/data/images/') ||
+    lower.includes('/appdata/roaming/float-anchor/data/images/')
+  )
+
+  return looksLikeStoredImagePath && IMAGE_EXTENSIONS.includes(ext) ? fileName : null
+}
+
 function faUrlTransform(url: string): string {
   if (url.startsWith('fa://') || url.startsWith('fa:')) return url
   if (url.startsWith('data:')) return url
   if (url.startsWith('fa-image:')) return url
   if (url.startsWith('fa-img:')) return url
+  const storedImageName = getStoredImageName(url)
+  if (storedImageName) return `fa-img://${encodeURIComponent(storedImageName)}`
   if (url.startsWith('/')) return `fa-image://local${url}`
   return defaultUrlTransform(url)
 }

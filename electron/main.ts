@@ -310,6 +310,9 @@ function createWindow() {
   const theme = getThemeFromSettings()
   const isDark = theme === 'dark'
   const bgColor = isDark ? '#1a1a1e' : '#f0f0f0'
+  const windowIcon = process.platform === 'win32'
+    ? path.join(__dirname, '../build/icon.png')
+    : undefined
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -324,6 +327,7 @@ function createWindow() {
     } : undefined,
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: bgColor,
+    icon: windowIcon,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -516,6 +520,40 @@ function resolveStoredImagePath(fileName: string) {
   return null
 }
 
+function getImageBasename(value: string) {
+  const clean = value.split(/[?#]/)[0].replace(/\\/g, '/')
+  return path.posix.basename(clean)
+}
+
+function extractStoredImageName(value: string) {
+  if (!value) return null
+
+  let decoded = value.trim().replace(/^<|>$/g, '')
+  try {
+    decoded = decodeURIComponent(decoded)
+  } catch {}
+
+  const normalized = decoded.replace(/\\/g, '/')
+  if (normalized.startsWith('fa-img://')) {
+    return getImageBasename(normalized.replace(/^fa-img:\/\//, ''))
+  }
+
+  const imageName = getImageBasename(normalized)
+  if (!imageName || !IMAGE_EXTENSION_CANDIDATES.includes(path.extname(imageName).toLowerCase())) {
+    return null
+  }
+
+  const lower = normalized.toLowerCase()
+  const looksLikeStoredImagePath = (
+    lower.includes('/float-anchor/data/images/') ||
+    lower.includes('/floatanchor/data/images/') ||
+    lower.includes('/application support/float-anchor/data/images/') ||
+    lower.includes('/appdata/roaming/float-anchor/data/images/')
+  )
+
+  return looksLikeStoredImagePath ? imageName : null
+}
+
 async function ensureRemoteDirectory(client: any, remoteDir: string) {
   try {
     const exists = await client.exists(remoteDir)
@@ -595,7 +633,16 @@ function getReferencedImageNames(data: any) {
     for (const card of canvas.cards || []) {
       const content = typeof card.content === 'string' ? card.content : ''
       for (const match of content.matchAll(/fa-img:\/\/([^\s)]+)/g)) {
-        referenced.add(decodeURIComponent(match[1]))
+        const imageName = extractStoredImageName(`fa-img://${match[1]}`)
+        if (imageName) referenced.add(imageName)
+      }
+      for (const match of content.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)) {
+        const imageName = extractStoredImageName(match[1])
+        if (imageName) referenced.add(imageName)
+      }
+      for (const match of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
+        const imageName = extractStoredImageName(match[1])
+        if (imageName) referenced.add(imageName)
       }
     }
   }
@@ -628,7 +675,7 @@ async function downloadMissingRemoteImagesForData(client: any, data: any) {
   for (const missingName of missingNames) {
     const remoteEntry = remoteFiles.find((entry: any) => {
       const remoteName = entry.basename || path.posix.basename(entry.filename || '')
-      return remoteName && isRemoteImageNameMatch(path.basename(missingName), remoteName)
+      return remoteName && isRemoteImageNameMatch(getImageBasename(missingName), remoteName)
     })
     if (!remoteEntry) continue
 
@@ -636,7 +683,7 @@ async function downloadMissingRemoteImagesForData(client: any, data: any) {
       ? remoteEntry.filename
       : `${WEBDAV_REMOTE_IMAGES_DIR}/${remoteEntry.basename}`
     const remoteName = remoteEntry.basename || path.posix.basename(remotePath)
-    const targetName = path.basename(missingName) || remoteName
+    const targetName = getImageBasename(missingName) || remoteName
     const targetExt = path.extname(targetName)
     const remoteExt = path.extname(remoteName)
     const localFileName = targetExt ? targetName : `${targetName}${remoteExt}`
@@ -1114,6 +1161,13 @@ app.whenReady().then(() => {
     try {
       const url = new URL(request.url)
       const filePath = decodeURIComponent(url.pathname)
+      if (!fs.existsSync(filePath)) {
+        const storedImageName = extractStoredImageName(filePath)
+        const storedImagePath = storedImageName ? resolveStoredImagePath(storedImageName) : null
+        if (storedImagePath) {
+          return net.fetch(pathToFileURL(storedImagePath).href)
+        }
+      }
       return net.fetch(pathToFileURL(filePath).href)
     } catch {
       return new Response('Not found', { status: 404 })
