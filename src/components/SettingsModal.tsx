@@ -15,10 +15,11 @@ export default function SettingsModal() {
   const [importMessage, setImportMessage] = useState('')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearInput, setClearInput] = useState('')
-  const [clearStatus, setClearStatus] = useState<'idle' | 'no-backup' | 'ready' | 'clearing' | 'done'>('idle')
+  const [clearStatus, setClearStatus] = useState<'idle' | 'preparing' | 'no-backup' | 'ready' | 'clearing' | 'done'>('idle')
   const [clearMessage, setClearMessage] = useState('')
 
   const CLEAR_CONFIRM_TEXT = '我已明确该操作会清空所有内容，执行'
+  const formatBackupTime = (ts?: number) => ts ? new Date(ts).toLocaleString('zh-CN') : '未知时间'
 
   const handleExport = useCallback(async () => {
     setBackupStatus('exporting')
@@ -68,19 +69,34 @@ export default function SettingsModal() {
   const handleClearClick = useCallback(async () => {
     setClearInput('')
     setClearMessage('')
-    const res = await window.electronAPI.checkBackupExists()
-    if (!res.exists) {
-      setClearStatus('no-backup')
-      setClearMessage('未检测到备份文件，请先导出备份后再执行清空操作。')
-      setShowClearConfirm(true)
-      return
-    }
-    setClearStatus('ready')
+    setClearStatus('preparing')
     setShowClearConfirm(true)
+    try {
+      const res = await window.electronAPI.prepareClearAllData()
+      if (!res.success) {
+        setClearStatus('no-backup')
+        setClearMessage(res.error || '清空前自动备份失败，请先导出备份后重试。')
+        return
+      }
+
+      if (res.backupCreated) {
+        const backupLabel = res.latestFileName ? `：${res.latestFileName}` : ''
+        setClearMessage(`未检测到 1 天内的备份，已自动创建新备份${backupLabel}，请再次确认是否清空。`)
+      } else if (res.latestTimestamp) {
+        setClearMessage(`已检测到 1 天内的最新备份（${formatBackupTime(res.latestTimestamp)}），可以继续清空。`)
+      } else {
+        setClearMessage('已完成清空前备份检查，可以继续清空。')
+      }
+
+      setClearStatus('ready')
+    } catch {
+      setClearStatus('no-backup')
+      setClearMessage('清空前自动备份失败，请先导出备份后重试。')
+    }
   }, [])
 
   const handleClearConfirm = useCallback(async () => {
-    if (clearInput !== CLEAR_CONFIRM_TEXT) return
+    if (clearInput !== CLEAR_CONFIRM_TEXT || clearStatus !== 'ready') return
     setClearStatus('clearing')
     setClearMessage('')
     try {
@@ -103,11 +119,12 @@ export default function SettingsModal() {
       setClearStatus('ready')
       setClearMessage('清空时发生错误')
     }
-  }, [clearInput])
+  }, [clearInput, clearStatus])
 
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'installing' | 'error'>('idle')
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [updateProgress, setUpdateProgress] = useState(0)
+  const [updateResumePercent, setUpdateResumePercent] = useState(0)
   const [updateInfo, setUpdateInfo] = useState<{ downloadUrl: string; assetName: string } | null>(null)
   const [currentVersion, setCurrentVersion] = useState('')
   const checkedRef = useRef(false)
@@ -117,24 +134,24 @@ export default function SettingsModal() {
       setUpdateVersion(info.version)
       setUpdateInfo({ downloadUrl: info.downloadUrl, assetName: info.assetName })
       setCurrentVersion(info.currentVersion)
-      const rp = (info as any).resumePercent ?? 0
-      if (rp > 0 && rp < 100) {
-        setUpdateStatus('downloading')
-        setUpdateProgress(rp)
-      } else if (rp >= 100) {
-        setUpdateStatus('downloading')
-        setUpdateProgress(100)
-      } else {
-        setUpdateStatus('available')
-      }
+      const rp = info.resumePercent ?? 0
+      setUpdateResumePercent(rp)
+      setUpdateProgress(rp)
+      setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'available')
     })
     const unsub2 = window.electronAPI.onUpdateProgress((p) => {
       if (p.stage === 'downloading') {
         setUpdateStatus('downloading')
         setUpdateProgress(p.percent)
+        setUpdateResumePercent(p.percent)
       } else if (p.stage === 'installing') {
         setUpdateStatus('installing')
         setUpdateProgress(100)
+        setUpdateResumePercent(100)
+      } else if (p.stage === 'cancelled') {
+        setUpdateStatus('available')
+        setUpdateProgress(p.percent)
+        setUpdateResumePercent(p.percent)
       } else if (p.stage === 'error') {
         setUpdateStatus('error')
       }
@@ -152,6 +169,7 @@ export default function SettingsModal() {
         setUpdateVersion(res.version)
         setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'available')
       } else {
+        setUpdateResumePercent(0)
         setUpdateStatus((prev) => (prev === 'downloading' || prev === 'installing') ? prev : 'up-to-date')
       }
     }).catch(() => {
@@ -167,6 +185,7 @@ export default function SettingsModal() {
         setUpdateVersion(res.version)
         setUpdateStatus('available')
       } else {
+        setUpdateResumePercent(0)
         setUpdateStatus('up-to-date')
       }
     }).catch(() => setUpdateStatus('error'))
@@ -175,9 +194,13 @@ export default function SettingsModal() {
   const handleStartUpdate = useCallback(() => {
     if (!updateInfo) return
     setUpdateStatus('downloading')
-    setUpdateProgress(0)
+    setUpdateProgress(updateResumePercent > 0 ? updateResumePercent : 0)
     window.electronAPI.triggerUpdate(updateInfo.downloadUrl, updateInfo.assetName)
-  }, [updateInfo])
+  }, [updateInfo, updateResumePercent])
+
+  const handleCancelUpdate = useCallback(() => {
+    window.electronAPI.cancelUpdate()
+  }, [])
 
   const [server, setServer] = useState(settings.webdav?.server || 'https://dav.jianguoyun.com/dav/')
   const [username, setUsername] = useState(settings.webdav?.username || '')
@@ -335,7 +358,14 @@ export default function SettingsModal() {
               </button>
               {updateStatus === 'available' && updateInfo && (
                 <button className="primary" onClick={handleStartUpdate}>
-                  更新到 v{updateVersion}
+                  {updateResumePercent > 0 && updateResumePercent < 100
+                    ? `继续更新（${updateResumePercent}%）`
+                    : `更新到 v${updateVersion}`}
+                </button>
+              )}
+              {updateStatus === 'downloading' && (
+                <button onClick={handleCancelUpdate}>
+                  停止更新
                 </button>
               )}
               {updateStatus === 'error' && (
@@ -461,7 +491,11 @@ export default function SettingsModal() {
           <div className="clear-confirm-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage(''); setClearInput('') } }}>
             <div className="clear-confirm-modal">
               <h3>清空所有数据</h3>
-              {clearStatus === 'no-backup' ? (
+              {clearStatus === 'preparing' ? (
+                <div className="clear-info">
+                  正在检查最近备份，如 1 天内没有备份会先自动创建新备份...
+                </div>
+              ) : clearStatus === 'no-backup' ? (
                 <div className="clear-warning">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" />
@@ -473,6 +507,11 @@ export default function SettingsModal() {
               ) : (
                 <>
                   <p className="clear-desc">此操作将永久删除所有画布、卡片、标题、分区和连线数据。请输入以下文字确认：</p>
+                  {clearMessage && (
+                    <div className="data-message success">
+                      {clearMessage}
+                    </div>
+                  )}
                   <p className="clear-confirm-text">{CLEAR_CONFIRM_TEXT}</p>
                   <input
                     className="clear-input"
@@ -481,11 +520,6 @@ export default function SettingsModal() {
                     placeholder="请输入上方文字以确认"
                     disabled={clearStatus === 'clearing' || clearStatus === 'done'}
                   />
-                  {clearMessage && (
-                    <div className={`data-message ${clearStatus === 'done' ? 'success' : 'error'}`}>
-                      {clearMessage}
-                    </div>
-                  )}
                   <div className="clear-confirm-actions">
                     <button onClick={() => { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage(''); setClearInput('') }}>
                       取消
@@ -500,10 +534,10 @@ export default function SettingsModal() {
                   </div>
                 </>
               )}
-              {clearStatus === 'no-backup' && (
+              {(clearStatus === 'no-backup' || clearStatus === 'preparing') && (
                 <div className="clear-confirm-actions">
                   <button onClick={() => { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage('') }}>
-                    我知道了
+                    {clearStatus === 'preparing' ? '关闭' : '我知道了'}
                   </button>
                 </div>
               )}

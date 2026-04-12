@@ -50,7 +50,16 @@ function getDownloadMeta(destPath: string) {
   return destPath + '.meta'
 }
 
-async function downloadFile(url: string, destPath: string, onProgress?: (pct: number) => void): Promise<void> {
+function isUpdateCancelledError(err: unknown) {
+  return err instanceof Error && err.name === 'AbortError'
+}
+
+async function downloadFile(
+  url: string,
+  destPath: string,
+  onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   const partPath = destPath + '.part'
   let existingBytes = 0
   if (fs.existsSync(partPath)) {
@@ -65,7 +74,7 @@ async function downloadFile(url: string, destPath: string, onProgress?: (pct: nu
     headers['Range'] = `bytes=${existingBytes}-`
   }
 
-  const resp = await net.fetch(url, { headers })
+  const resp = await net.fetch(url, { headers, signal })
 
   if (!resp.ok && resp.status !== 206) {
     throw new Error(`HTTP ${resp.status}`)
@@ -94,26 +103,35 @@ async function downloadFile(url: string, destPath: string, onProgress?: (pct: nu
   const reader = resp.body?.getReader()
   if (!reader) throw new Error('No response body')
 
+  let streamError: unknown = null
   try {
     while (true) {
+      if (signal?.aborted) {
+        const err = new Error('update-cancelled')
+        err.name = 'AbortError'
+        throw err
+      }
       const { done, value } = await reader.read()
       if (done) break
       ws.write(Buffer.from(value))
       downloaded += value.byteLength
       if (totalBytes > 0 && onProgress) onProgress(Math.round((downloaded / totalBytes) * 100))
     }
+  } catch (err) {
+    streamError = err
   } finally {
     reader.releaseLock()
   }
 
   await new Promise<void>((resolve, reject) => {
-    ws.end(() => {
-      fs.renameSync(partPath, destPath)
-      try { fs.unlinkSync(getDownloadMeta(destPath)) } catch {}
-      resolve()
-    })
+    ws.end(() => resolve())
     ws.on('error', reject)
   })
+
+  if (streamError) throw streamError
+
+  fs.renameSync(partPath, destPath)
+  try { fs.unlinkSync(getDownloadMeta(destPath)) } catch {}
 }
 
 function getResumePercent(destPath: string): number {
@@ -201,19 +219,27 @@ ipcMain.handle('get-resume-progress', async (_event, assetName: string) => {
 })
 
 let activeDownloadAbort: (() => void) | null = null
+let activeDownloadPath: string | null = null
 
 ipcMain.handle('trigger-update', async (_event, downloadUrl: string, assetName: string) => {
+  if (activeDownloadAbort) {
+    return { success: false, error: '已有更新任务正在进行' }
+  }
+
+  const controller = new AbortController()
   try {
     const tmpDir = path.join(app.getPath('temp'), 'float-anchor-update')
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
     const destPath = path.join(tmpDir, assetName)
+    activeDownloadAbort = () => controller.abort()
+    activeDownloadPath = destPath
 
     const resumePct = getResumePercent(destPath)
     mainWindow?.webContents.send('update-progress', { stage: 'downloading', percent: resumePct })
 
     await downloadFile(downloadUrl, destPath, (pct) => {
       mainWindow?.webContents.send('update-progress', { stage: 'downloading', percent: pct })
-    })
+    }, controller.signal)
 
     mainWindow?.webContents.send('update-progress', { stage: 'installing', percent: 100 })
 
@@ -247,10 +273,26 @@ ipcMain.handle('trigger-update', async (_event, downloadUrl: string, assetName: 
 
     return { success: true }
   } catch (err) {
+    if (isUpdateCancelledError(err)) {
+      const resumePct = activeDownloadPath ? getResumePercent(activeDownloadPath) : 0
+      mainWindow?.webContents.send('update-progress', { stage: 'cancelled', percent: resumePct })
+      return { success: false, error: 'cancelled' }
+    }
     console.error('Update failed:', err)
     mainWindow?.webContents.send('update-progress', { stage: 'error', percent: 0 })
     return { success: false, error: String(err) }
+  } finally {
+    activeDownloadAbort = null
+    activeDownloadPath = null
   }
+})
+
+ipcMain.handle('cancel-update', async () => {
+  if (!activeDownloadAbort) {
+    return { success: false, error: '当前没有正在下载的更新任务' }
+  }
+  activeDownloadAbort()
+  return { success: true }
 })
 
 function getThemeFromSettings(): 'light' | 'dark' {
@@ -421,6 +463,39 @@ function getImagesDir() {
   return path.join(dir, 'images')
 }
 
+const IMAGE_EXTENSION_CANDIDATES = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff']
+
+function isRealImageFile(filePath: string) {
+  try {
+    const header = fs.readFileSync(filePath).subarray(0, 12)
+    return (
+      header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
+      header.subarray(0, 2).equals(Buffer.from([0xff, 0xd8])) ||
+      header.subarray(0, 4).toString('ascii') === 'GIF8' ||
+      (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP') ||
+      header.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
+      header.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a]))
+    )
+  } catch {
+    return false
+  }
+}
+
+function resolveStoredImagePath(fileName: string) {
+  const imagesDir = getImagesDir()
+  const normalizedName = path.basename(fileName)
+  const exactPath = path.join(imagesDir, normalizedName)
+  if (fs.existsSync(exactPath) && isRealImageFile(exactPath)) return exactPath
+
+  const baseName = path.parse(normalizedName).name || normalizedName
+  for (const ext of IMAGE_EXTENSION_CANDIDATES) {
+    const candidate = path.join(imagesDir, `${baseName}${ext}`)
+    if (fs.existsSync(candidate) && isRealImageFile(candidate)) return candidate
+  }
+
+  return null
+}
+
 async function ensureRemoteDirectory(client: any, remoteDir: string) {
   try {
     const exists = await client.exists(remoteDir)
@@ -503,7 +578,6 @@ function getLocalFileModifiedAt(file: string) {
 }
 
 function hasMissingLocalImages(data: any) {
-  const imagesDir = getImagesDir()
   const referenced = new Set<string>()
 
   for (const canvas of data?.canvases || []) {
@@ -516,7 +590,7 @@ function hasMissingLocalImages(data: any) {
   }
 
   for (const fileName of referenced) {
-    if (!fs.existsSync(path.join(imagesDir, fileName))) {
+    if (!resolveStoredImagePath(fileName)) {
       return true
     }
   }
@@ -697,9 +771,39 @@ function getBackupDir(): string {
   return path.join(app.getPath('documents'), 'FloatAnchor-Backups')
 }
 
-ipcMain.handle('get-backup-dir', () => getBackupDir())
+const CLEAR_RECENT_BACKUP_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
-ipcMain.handle('export-backup', async () => {
+function listBackupArchives() {
+  const backupDir = getBackupDir()
+  if (!fs.existsSync(backupDir)) return []
+
+  return fs.readdirSync(backupDir)
+    .filter((fileName) => fileName.endsWith('.zip') && fileName.startsWith('FloatAnchor-backup-'))
+    .map((fileName) => {
+      const fullPath = path.join(backupDir, fileName)
+      const stat = fs.statSync(fullPath)
+      return { fileName, fullPath, mtimeMs: stat.mtimeMs }
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+}
+
+function getBackupStatus() {
+  const backupDir = getBackupDir()
+  const backups = listBackupArchives()
+  const latest = backups[0]
+  const hasRecentBackup = !!latest && Date.now() - latest.mtimeMs <= CLEAR_RECENT_BACKUP_MAX_AGE_MS
+
+  return {
+    exists: backups.length > 0,
+    count: backups.length,
+    dir: backupDir,
+    latestFileName: latest?.fileName,
+    latestTimestamp: latest?.mtimeMs,
+    hasRecentBackup,
+  }
+}
+
+async function exportBackupArchive() {
   try {
     const { dataFile: file, dataDir: dir } = getDataPaths()
     if (!fs.existsSync(file)) {
@@ -738,6 +842,30 @@ ipcMain.handle('export-backup', async () => {
     console.error('Export backup failed:', err)
     return { success: false, error: String(err) }
   }
+}
+
+async function ensureRecentBackupForClear() {
+  const status = getBackupStatus()
+  if (status.hasRecentBackup) {
+    return { success: true, backupCreated: false, ...status }
+  }
+
+  const backupRes = await exportBackupArchive()
+  if (!backupRes.success) {
+    return { success: false, error: backupRes.error || '清空前自动备份失败', ...status }
+  }
+
+  return {
+    success: true,
+    backupCreated: true,
+    ...getBackupStatus(),
+  }
+}
+
+ipcMain.handle('get-backup-dir', () => getBackupDir())
+
+ipcMain.handle('export-backup', async () => {
+  return exportBackupArchive()
 })
 
 ipcMain.handle('import-backup', async () => {
@@ -840,17 +968,28 @@ ipcMain.handle('import-backup', async () => {
 
 ipcMain.handle('check-backup-exists', async () => {
   try {
-    const backupDir = getBackupDir()
-    if (!fs.existsSync(backupDir)) return { exists: false }
-    const files = fs.readdirSync(backupDir).filter((f) => f.endsWith('.zip') && f.startsWith('FloatAnchor-backup-'))
-    return { exists: files.length > 0, count: files.length, dir: backupDir }
+    return getBackupStatus()
   } catch {
     return { exists: false }
   }
 })
 
+ipcMain.handle('prepare-clear-all-data', async () => {
+  try {
+    return await ensureRecentBackupForClear()
+  } catch (err) {
+    console.error('Prepare clear all data failed:', err)
+    return { success: false, error: String(err) }
+  }
+})
+
 ipcMain.handle('clear-all-data', async () => {
   try {
+    const backupRes = await ensureRecentBackupForClear()
+    if (!backupRes.success) {
+      return { success: false, error: backupRes.error || '清空前自动备份失败' }
+    }
+
     const { dataFile: file } = getDataPaths()
     const emptyData = {
       canvases: [],
@@ -902,9 +1041,8 @@ app.whenReady().then(() => {
     try {
       const url = new URL(request.url)
       const fileName = decodeURIComponent(url.pathname).replace(/^\/+/, '') || url.hostname
-      const { dataDir: dir } = getDataPaths()
-      const filePath = path.join(dir, 'images', fileName)
-      if (!fs.existsSync(filePath)) {
+      const filePath = resolveStoredImagePath(fileName)
+      if (!filePath || !fs.existsSync(filePath)) {
         return new Response('Not found', { status: 404 })
       }
       return net.fetch(pathToFileURL(filePath).href)

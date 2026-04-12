@@ -42,26 +42,58 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    loadSettings().then(async () => {
-      const { settings } = useStore.getState()
-      if (settings.webdav?.server) {
-        try {
-          useStore.getState().setSyncStatus('syncing')
-          const res = await window.electronAPI.webdavStartupSync(settings.webdav)
-          if (res.success && res.action === 'downloaded' && res.data) {
-            await loadData()
-            useStore.getState().setSyncStatus('idle')
-            return
-          }
-          useStore.getState().setSyncStatus(res.success ? 'idle' : 'error')
-        } catch {
-          useStore.getState().setSyncStatus('error')
-        }
-      }
+    let disposed = false
+
+    const bootstrap = async () => {
+      await loadSettings()
+      if (disposed) return
+
+      // Never block the first screen on remote sync.
       await loadData()
-    })
+      if (disposed) return
+
+      const { settings } = useStore.getState()
+      if (!settings.webdav?.server) return
+
+      try {
+        useStore.getState().setSyncStatus('syncing')
+        const res = await window.electronAPI.webdavStartupSync(settings.webdav)
+        if (disposed) return
+
+        if (!res.success) {
+          useStore.getState().setSyncStatus('error')
+          return
+        }
+
+        if (res.action === 'downloaded' && res.data) {
+          await useStore.getState().loadData()
+          if (disposed) return
+        }
+
+        if (res.action === 'uploaded' || res.action === 'downloaded') {
+          useStore.getState().setSyncStatus('success')
+          if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
+          backgroundStatusTimerRef.current = setTimeout(() => {
+            if (useStore.getState().syncStatus === 'success') {
+              useStore.getState().setSyncStatus('idle')
+            }
+          }, 3000)
+          return
+        }
+
+        useStore.getState().setSyncStatus('idle')
+      } catch {
+        if (!disposed) useStore.getState().setSyncStatus('error')
+      }
+    }
+
+    void bootstrap()
     window.electronAPI.getPlatform().then(setPlatform)
-  }, [])
+
+    return () => {
+      disposed = true
+    }
+  }, [loadData, loadSettings])
 
   const runBackgroundSync = useCallback(async (config: WebDAVConfig) => {
     if (backgroundSyncingRef.current) return

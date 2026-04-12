@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   triggerUpdate: (downloadUrl: string, assetName: string) =>
     ipcRenderer.invoke('trigger-update', downloadUrl, assetName),
+  cancelUpdate: () => ipcRenderer.invoke('cancel-update'),
   getResumeProgress: (assetName: string) =>
     ipcRenderer.invoke('get-resume-progress', assetName),
   checkUpdate: () => ipcRenderer.invoke('check-update'),
@@ -36,6 +37,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportBackup: () => ipcRenderer.invoke('export-backup'),
   importBackup: () => ipcRenderer.invoke('import-backup'),
   checkBackupExists: () => ipcRenderer.invoke('check-backup-exists'),
+  prepareClearAllData: () => ipcRenderer.invoke('prepare-clear-all-data'),
   clearAllData: () => ipcRenderer.invoke('clear-all-data'),
   getBackupDir: () => ipcRenderer.invoke('get-backup-dir'),
 })

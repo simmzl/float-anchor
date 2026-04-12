@@ -362,6 +362,21 @@ input {
   opacity: 0.85;
 }
 
+.update-banner-actions {
+  margin-top: 8px;
+}
+
+.update-banner-btn.secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.update-banner-btn.secondary:hover {
+  background: rgba(0, 0, 0, 0.06);
+  opacity: 1;
+}
+
 .update-banner-progress {
   margin-top: 8px;
 }
@@ -2142,6 +2157,16 @@ input {
   border-radius: var(--radius-sm);
   border: 1px solid rgba(239, 68, 68, 0.2);
   color: #ef4444;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.clear-info {
+  padding: 12px;
+  background: var(--accent-light);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(74, 144, 217, 0.2);
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
 }

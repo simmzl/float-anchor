@@ -75,15 +75,31 @@ interface UpdateInfo {
   currentVersion: string
   assetName: string
   downloadUrl: string
+  resumePercent?: number
 }
 
 interface UpdateProgress {
-  stage: 'downloading' | 'installing' | 'error'
+  stage: 'downloading' | 'installing' | 'error' | 'cancelled'
   percent: number
 }
 
 interface SyncStatus {
   status: 'syncing' | 'success' | 'error'
+  error?: string
+}
+
+interface BackupStatus {
+  exists: boolean
+  count?: number
+  dir?: string
+  latestFileName?: string
+  latestTimestamp?: number
+  hasRecentBackup?: boolean
+}
+
+interface PrepareClearResult extends BackupStatus {
+  success: boolean
+  backupCreated?: boolean
   error?: string
 }
 
@@ -101,6 +117,7 @@ declare global {
       onUpdateAvailable: (cb: (info: UpdateInfo) => void) => () => void
       onUpdateProgress: (cb: (progress: UpdateProgress) => void) => () => void
       triggerUpdate: (downloadUrl: string, assetName: string) => Promise<{ success: boolean; error?: string }>
+      cancelUpdate: () => Promise<{ success: boolean; error?: string }>
       getResumeProgress: (assetName: string) => Promise<number>
       checkUpdate: () => Promise<{ hasUpdate: boolean; version?: string; currentVersion: string }>
       webdavTest: (config: WebDAVConfig) => Promise<{ success: boolean; error?: string }>
@@ -112,7 +129,8 @@ declare global {
       onSyncStatus: (cb: (status: SyncStatus) => void) => void
       exportBackup: () => Promise<{ success: boolean; path?: string; fileName?: string; error?: string }>
       importBackup: () => Promise<{ success: boolean; data?: AppData; error?: string }>
-      checkBackupExists: () => Promise<{ exists: boolean; count?: number; dir?: string }>
+      checkBackupExists: () => Promise<BackupStatus>
+      prepareClearAllData: () => Promise<PrepareClearResult>
       clearAllData: () => Promise<{ success: boolean; data?: AppData; error?: string }>
       getBackupDir: () => Promise<string>
     }

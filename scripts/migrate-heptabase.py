@@ -14,6 +14,7 @@ import sys
 import uuid
 import re
 from pathlib import Path
+from typing import Optional
 
 
 FA_DEFAULT_WIDTH = 373
@@ -40,6 +41,8 @@ HEPTABASE_COLOR_MAP = {
     'gray': '#9ca3af',
     'grey': '#9ca3af',
 }
+
+IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "tif", "tiff"]
 
 
 def find_backup_root(given_path: str) -> str:
@@ -144,7 +147,7 @@ def tiptap_to_markdown(node, depth=0) -> str:
         alt = attrs.get("alt") or ""
         file_id = attrs.get("fileId") or ""
         if file_id:
-            src = f"fa-img://{file_id}.png"
+            src = f"fa-img://{file_id}"
         if src:
             return f"![{alt}]({src})"
         return ""
@@ -221,13 +224,13 @@ def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> t
             if fid:
                 stats["found"] += 1
                 if token and images_dir:
-                    status, _ = download_heptabase_image(fid, images_dir, token)
+                    status, img_path = download_heptabase_image(fid, images_dir, token)
                     if status == "ok":
                         stats["downloaded"] += 1
-                        urls.append(f"fa-img://{fid}.png")
+                        urls.append(f"fa-img://{Path(img_path).stem}")
                     elif status == "cached":
                         stats["cached"] += 1
-                        urls.append(f"fa-img://{fid}.png")
+                        urls.append(f"fa-img://{Path(img_path).stem}")
                     else:
                         stats["failed"] += 1
                         urls.append("")
@@ -359,7 +362,7 @@ def fix_overlaps(cards: list) -> list:
     col_threshold = FA_DEFAULT_WIDTH * 0.6
 
     # 1) Cluster cards into columns by x proximity
-    columns: list[list] = []
+    columns = []
     for card in cards:
         placed_in_col = False
         for col in columns:
@@ -407,6 +410,31 @@ def default_output_path() -> str:
 file_metadata = {}
 
 
+def _candidate_image_paths(file_id: str, dest_dir: str) -> list:
+    return [os.path.join(dest_dir, f"{file_id}.{ext}") for ext in IMAGE_EXTENSIONS]
+
+
+def _find_cached_image(file_id: str, dest_dir: str) -> Optional[str]:
+    for candidate in _candidate_image_paths(file_id, dest_dir):
+        if os.path.exists(candidate) and _is_real_image(candidate):
+            return candidate
+    return None
+
+
+def _detect_image_extension(data: bytes) -> Optional[str]:
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return "png"
+    if data[:2] == b'\xff\xd8':
+        return "jpg"
+    if data[:4] == b'GIF8':
+        return "gif"
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return "webp"
+    if data[:4] == b'II\x2a\x00' or data[:4] == b'MM\x00\x2a':
+        return "tif"
+    return None
+
+
 def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> tuple:
     """Download an image from Heptabase via presigned S3 URL.
     Returns (status, path_or_error):
@@ -415,9 +443,9 @@ def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> tuple:
       ("fail", reason)  - download failed
     """
     import urllib.request
-    dest_path = os.path.join(dest_dir, f"{file_id}.png")
-    if os.path.exists(dest_path) and _is_real_image(dest_path):
-        return ("cached", dest_path)
+    cached_path = _find_cached_image(file_id, dest_dir)
+    if cached_path:
+        return ("cached", cached_path)
     try:
         body = json.dumps({"token": token, "fileId": file_id, "type": "image/png", "permissionCheckMode": "public"}).encode()
         req = urllib.request.Request("https://api.heptabase.com/v1/file", data=body,
@@ -433,10 +461,12 @@ def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> tuple:
         req2 = urllib.request.Request(signed_url)
         with urllib.request.urlopen(req2, timeout=30) as resp2:
             data = resp2.read()
-        if not _is_image_data(data):
+        ext = _detect_image_extension(data)
+        if not ext:
             reason = f"non-image data ({len(data)} bytes), possible HTML error page"
             print(f"    [FAIL] image {file_id}: {reason}")
             return ("fail", reason)
+        dest_path = os.path.join(dest_dir, f"{file_id}.{ext}")
         with open(dest_path, "wb") as f:
             f.write(data)
         return ("ok", dest_path)
@@ -456,14 +486,7 @@ def download_heptabase_image(file_id: str, dest_dir: str, token: str) -> tuple:
 
 def _is_image_data(data: bytes) -> bool:
     """Check if binary data starts with a known image magic number."""
-    if len(data) < 4:
-        return False
-    return (data[:8] == b'\x89PNG\r\n\x1a\n' or
-            data[:2] == b'\xff\xd8' or
-            data[:4] == b'GIF8' or
-            data[:4] == b'RIFF' or
-            data[:4] == b'II\x2a\x00' or
-            data[:4] == b'MM\x00\x2a')
+    return _detect_image_extension(data) is not None
 
 
 def _is_real_image(filepath: str) -> bool:

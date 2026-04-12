@@ -6,18 +6,28 @@ function UpdateBanner() {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; downloadUrl: string; assetName: string } | null>(null)
   const [dismissed, setDismissed] = useState(false)
   const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null)
+  const [resumePercent, setResumePercent] = useState(0)
 
   useEffect(() => {
     const unsub1 = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateInfo({ version: info.version, downloadUrl: info.downloadUrl, assetName: info.assetName })
       setDismissed(false)
-      if ((info as any).resumePercent > 0 && (info as any).resumePercent < 100) {
-        setProgress({ stage: 'downloading', percent: (info as any).resumePercent })
-      } else {
-        setProgress(null)
-      }
+      setResumePercent(info.resumePercent ?? 0)
+      setProgress((prev) => (
+        prev?.stage === 'downloading' || prev?.stage === 'installing'
+          ? prev
+          : null
+      ))
     })
     const unsub2 = window.electronAPI.onUpdateProgress((p) => {
+      if (p.stage === 'cancelled') {
+        setResumePercent(p.percent)
+        setProgress(null)
+        return
+      }
+      if (p.stage === 'downloading') {
+        setResumePercent(p.percent)
+      }
       setProgress({ stage: p.stage, percent: p.percent })
     })
     return () => { unsub1(); unsub2() }
@@ -25,13 +35,18 @@ function UpdateBanner() {
 
   const handleUpdate = useCallback(() => {
     if (!updateInfo) return
-    setProgress({ stage: 'downloading', percent: 0 })
+    setProgress({ stage: 'downloading', percent: resumePercent > 0 ? resumePercent : 0 })
     window.electronAPI.triggerUpdate(updateInfo.downloadUrl, updateInfo.assetName)
-  }, [updateInfo])
+  }, [resumePercent, updateInfo])
+
+  const handleCancelUpdate = useCallback(() => {
+    window.electronAPI.cancelUpdate()
+  }, [])
 
   if (!updateInfo) return null
 
   const isDownloading = progress?.stage === 'downloading' && progress.percent < 100
+  const canResume = resumePercent > 0 && resumePercent < 100
 
   if (dismissed && isDownloading) {
     return (
@@ -72,11 +87,20 @@ function UpdateBanner() {
             {progress.stage === 'downloading' ? `下载中 ${progress.percent}%` :
              progress.stage === 'installing' ? '安装中...' : '更新失败'}
           </span>
+          {isDownloading && (
+            <div className="update-banner-actions">
+              <button className="update-banner-btn secondary" onClick={handleCancelUpdate}>
+                停止更新
+              </button>
+            </div>
+          )}
         </div>
       ) : (
-        <button className="update-banner-btn" onClick={handleUpdate}>
-          更新
-        </button>
+        <div className="update-banner-actions">
+          <button className="update-banner-btn" onClick={handleUpdate}>
+            {canResume ? `继续更新（${resumePercent}%）` : '更新'}
+          </button>
+        </div>
       )}
     </div>
   )

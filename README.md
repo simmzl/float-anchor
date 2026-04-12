@@ -45,7 +45,7 @@
 - **画布导航** — 双指滑动（macOS）/ 鼠标中键拖拽（Windows）平移画布；捏合缩放（macOS）/ Ctrl+滚轮（Windows）缩放画布
 - **Light / Dark 主题** — 支持亮色和暗黑两种主题，在设置中一键切换
 - **坚果云同步** — 配置坚果云 WebDAV 后，保存后快速上传，后台定期双向同步，启动时自动拉取同步，本地自动备份
-- **应用内更新** — 检测到新版本时侧栏提示更新，支持一键下载安装
+- **应用内更新** — 检测到新版本时侧栏提示更新，支持一键下载安装，可随时停止并继续下载
 - **纯本地存储** — 所有数据保存在本地，不上传任何云端（除非主动配置云同步）
 
 ## 下载安装
@@ -54,9 +54,9 @@
 
 | 文件 | 平台 | 适用设备 |
 |------|------|----------|
-| `FloatAnchor-1.0.7-mac-arm64.dmg` | macOS | Apple Silicon (M1/M2/M3/M4) |
-| `FloatAnchor-1.0.7-mac-x64.dmg` | macOS | Intel Mac |
-| `FloatAnchor-1.0.7-win-setup.exe` | Windows | 64 位 Windows |
+| `FloatAnchor-1.0.8-mac-arm64.dmg` | macOS | Apple Silicon (M1/M2/M3/M4) |
+| `FloatAnchor-1.0.8-mac-x64.dmg` | macOS | Intel Mac |
+| `FloatAnchor-1.0.8-win-setup.exe` | Windows | 64 位 Windows |
 
 ### macOS 安装
 
@@ -119,6 +119,7 @@
 
 - **主题切换** — 在 Light 和 Dark 之间切换
 - **坚果云同步** — 填入坚果云 WebDAV 服务器地址、邮箱和应用密码，保存后自动开启同步。保存后会快速上传本地改动，后台还会定期检查并双向同步，启动时自动拉取最新数据，同步前自动创建本地备份。
+- **软件更新** — 下载更新时可在侧栏或设置中手动停止，之后继续下载会自动从已完成进度恢复
 
 ### 数据存储
 
