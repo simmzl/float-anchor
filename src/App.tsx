@@ -3,17 +3,22 @@ import { useStore } from './store'
 import Sidebar from './components/Sidebar'
 import CanvasView from './components/CanvasView'
 import SettingsModal from './components/SettingsModal'
+import type { WebDAVConfig } from './types'
 
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const SIDEBAR_DEFAULT = 228
+const BACKGROUND_SYNC_INTERVAL_MS = 10000
 
 export default function App() {
   const { loaded, loadData, loadSettings } = useStore()
   const showSettings = useStore((s) => s.showSettings)
+  const webdavConfig = useStore((s) => s.settings.webdav)
   const [platform, setPlatform] = useState<string>('darwin')
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const dragging = useRef(false)
+  const backgroundSyncingRef = useRef(false)
+  const backgroundStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const onResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -56,6 +61,49 @@ export default function App() {
       await loadData()
     })
     window.electronAPI.getPlatform().then(setPlatform)
+  }, [])
+
+  const runBackgroundSync = useCallback(async (config: WebDAVConfig) => {
+    if (backgroundSyncingRef.current) return
+    backgroundSyncingRef.current = true
+    try {
+      const res = await window.electronAPI.webdavPeriodicSync(config)
+      const store = useStore.getState()
+      if (res.success && res.action === 'downloaded' && res.data) {
+        await store.loadData()
+      }
+      if (!res.success) {
+        store.setSyncStatus('error')
+        return
+      }
+      if (res.action === 'uploaded' || res.action === 'downloaded') {
+        store.setSyncStatus('success')
+        if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
+        backgroundStatusTimerRef.current = setTimeout(() => {
+          if (useStore.getState().syncStatus === 'success') {
+            useStore.getState().setSyncStatus('idle')
+          }
+        }, 3000)
+      }
+    } catch {
+      useStore.getState().setSyncStatus('error')
+    } finally {
+      backgroundSyncingRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!webdavConfig?.server) return
+    const timer = window.setInterval(() => {
+      void runBackgroundSync(webdavConfig)
+    }, BACKGROUND_SYNC_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [runBackgroundSync, webdavConfig?.server, webdavConfig?.username, webdavConfig?.password])
+
+  useEffect(() => {
+    return () => {
+      if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
+    }
   }, [])
 
   if (!loaded) {

@@ -59,6 +59,7 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 
 const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
+const LOCAL_WEBDAV_SYNC_DELAY_MS = 2000
 
 export const useStore = create<AppState>((set, get) => ({
   canvases: [],
@@ -118,7 +119,7 @@ export const useStore = create<AppState>((set, get) => ({
             set({ syncStatus: res.success ? 'success' : 'error' })
             if (res.success) setTimeout(() => set({ syncStatus: 'idle' }), 3000)
           }).catch(() => set({ syncStatus: 'error' }))
-        }, 5000)
+        }, LOCAL_WEBDAV_SYNC_DELAY_MS)
       }
     }, 600)
   },

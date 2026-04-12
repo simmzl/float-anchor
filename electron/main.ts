@@ -381,6 +381,15 @@ const WEBDAV_REMOTE_DIR = 'FloatAnchor'
 const WEBDAV_REMOTE_FILE = 'FloatAnchor/float-anchor.json'
 const WEBDAV_REMOTE_IMAGES_DIR = 'FloatAnchor/images'
 const MAX_BACKUPS = 5
+const LOCAL_SYNC_DIRTY_TOLERANCE_MS = 1500
+
+let webdavSyncQueue: Promise<void> = Promise.resolve()
+
+function enqueueWebDAVSync<T>(task: () => Promise<T>): Promise<T> {
+  const next = webdavSyncQueue.then(task, task)
+  webdavSyncQueue = next.then(() => undefined, () => undefined)
+  return next
+}
 
 function createBackup() {
   try {
@@ -484,6 +493,15 @@ function getCardCount(data: any) {
   return (data?.canvases || []).reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
 }
 
+function getLocalFileModifiedAt(file: string) {
+  try {
+    if (!fs.existsSync(file)) return 0
+    return fs.statSync(file).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
 function hasMissingLocalImages(data: any) {
   const imagesDir = getImagesDir()
   const referenced = new Set<string>()
@@ -519,6 +537,76 @@ async function uploadLocalSnapshot(client: any, file: string) {
   return data
 }
 
+async function reconcileWebDAVState(config: { server: string; username: string; password: string }) {
+  const { dataFile: file } = getDataPaths()
+  ensureDataDir()
+
+  const client = await getWebDAVClient(config)
+  if (!await client.exists(WEBDAV_REMOTE_FILE)) {
+    if (fs.existsSync(file)) {
+      await uploadLocalSnapshot(client, file)
+      return { success: true, action: 'uploaded' as const }
+    }
+    return { success: true, action: 'up-to-date' as const }
+  }
+
+  const remoteRaw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
+  const remoteData = JSON.parse(remoteRaw as string)
+  const remoteTs = remoteData._syncTimestamp || 0
+
+  let localData: any = null
+  let localTs = 0
+  const hasLocalFile = fs.existsSync(file)
+  if (hasLocalFile) {
+    try {
+      localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
+      localTs = localData._syncTimestamp || 0
+    } catch {}
+  }
+
+  const localModifiedAt = getLocalFileModifiedAt(file)
+  const localDirty = !!localData && localModifiedAt > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS
+
+  if (remoteTs > localTs) {
+    // Prefer the newer side: keep local unsynced edits only when they happened after the remote snapshot.
+    if (localDirty && localModifiedAt + LOCAL_SYNC_DIRTY_TOLERANCE_MS >= remoteTs) {
+      await uploadLocalSnapshot(client, file)
+      return { success: true, action: 'uploaded' as const }
+    }
+    createBackup()
+    fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
+    await downloadRemoteImages(client)
+    return { success: true, action: 'downloaded' as const, data: remoteData }
+  }
+
+  if ((localDirty || localTs > remoteTs) && hasLocalFile) {
+    await uploadLocalSnapshot(client, file)
+    return { success: true, action: 'uploaded' as const }
+  }
+
+  if (remoteTs === localTs && remoteTs === 0) {
+    const remoteCardCount = getCardCount(remoteData)
+    const localCardCount = getCardCount(localData)
+    if (remoteCardCount > localCardCount) {
+      createBackup()
+      fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
+      await downloadRemoteImages(client)
+      return { success: true, action: 'downloaded' as const, data: remoteData }
+    }
+    if (localCardCount > remoteCardCount && hasLocalFile) {
+      await uploadLocalSnapshot(client, file)
+      return { success: true, action: 'uploaded' as const }
+    }
+  }
+
+  if (hasMissingLocalImages(remoteData)) {
+    await downloadRemoteImages(client)
+    return { success: true, action: 'downloaded' as const, data: remoteData }
+  }
+
+  return { success: true, action: 'up-to-date' as const }
+}
+
 ipcMain.handle('webdav-test', async (_event, config: { server: string; username: string; password: string }) => {
   try {
     const client = await getWebDAVClient(config)
@@ -531,105 +619,71 @@ ipcMain.handle('webdav-test', async (_event, config: { server: string; username:
 })
 
 ipcMain.handle('webdav-upload', async (_event, config: { server: string; username: string; password: string }) => {
-  try {
-    const { dataFile: file } = getDataPaths()
-    if (!fs.existsSync(file)) return { success: false, error: 'No data file' }
-    const client = await getWebDAVClient(config)
-    await uploadLocalSnapshot(client, file)
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
+  return enqueueWebDAVSync(async () => {
+    try {
+      const { dataFile: file } = getDataPaths()
+      if (!fs.existsSync(file)) return { success: false, error: 'No data file' }
+      const client = await getWebDAVClient(config)
+      await uploadLocalSnapshot(client, file)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
 })
 
 ipcMain.handle('webdav-download', async (_event, config: { server: string; username: string; password: string }) => {
-  try {
-    const client = await getWebDAVClient(config)
-    if (!await client.exists(WEBDAV_REMOTE_FILE)) {
-      return { success: true, data: null }
+  return enqueueWebDAVSync(async () => {
+    try {
+      const client = await getWebDAVClient(config)
+      if (!await client.exists(WEBDAV_REMOTE_FILE)) {
+        return { success: true, data: null }
+      }
+      const raw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
+      const data = JSON.parse(raw as string)
+      await downloadRemoteImages(client)
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
-    const raw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
-    const data = JSON.parse(raw as string)
-    await downloadRemoteImages(client)
-    return { success: true, data }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
+  })
 })
 
 ipcMain.handle('webdav-auto-sync', async (_event, config: { server: string; username: string; password: string }) => {
-  try {
-    const { dataFile: file } = getDataPaths()
-    if (!fs.existsSync(file)) return { success: false }
-    createBackup()
-    const client = await getWebDAVClient(config)
-    await uploadLocalSnapshot(client, file)
-    mainWindow?.webContents.send('sync-status', { status: 'success' })
-    return { success: true }
-  } catch (err) {
-    mainWindow?.webContents.send('sync-status', { status: 'error', error: String(err) })
-    return { success: false, error: String(err) }
-  }
+  return enqueueWebDAVSync(async () => {
+    try {
+      const { dataFile: file } = getDataPaths()
+      if (!fs.existsSync(file)) return { success: false }
+      createBackup()
+      const client = await getWebDAVClient(config)
+      await uploadLocalSnapshot(client, file)
+      mainWindow?.webContents.send('sync-status', { status: 'success' })
+      return { success: true }
+    } catch (err) {
+      mainWindow?.webContents.send('sync-status', { status: 'error', error: String(err) })
+      return { success: false, error: String(err) }
+    }
+  })
 })
 
 ipcMain.handle('webdav-startup-sync', async (_event, config: { server: string; username: string; password: string }) => {
-  try {
-    const { dataFile: file } = getDataPaths()
-    const client = await getWebDAVClient(config)
-    if (!await client.exists(WEBDAV_REMOTE_FILE)) {
-      if (fs.existsSync(file)) {
-        await uploadLocalSnapshot(client, file)
-      }
-      return { success: true, action: 'uploaded' }
+  return enqueueWebDAVSync(async () => {
+    try {
+      return await reconcileWebDAVState(config)
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
-    const remoteRaw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
-    const remoteData = JSON.parse(remoteRaw as string)
-    const remoteTs = remoteData._syncTimestamp || 0
-    let localData: any = null
-    let localTs = 0
-    if (fs.existsSync(file)) {
-      try {
-        localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
-        localTs = localData._syncTimestamp || 0
-      } catch {}
-    }
+  })
+})
 
-    if (remoteTs > localTs) {
-      createBackup()
-      fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
-      await downloadRemoteImages(client)
-      return { success: true, action: 'downloaded', data: remoteData }
+ipcMain.handle('webdav-periodic-sync', async (_event, config: { server: string; username: string; password: string }) => {
+  return enqueueWebDAVSync(async () => {
+    try {
+      return await reconcileWebDAVState(config)
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
-
-    if (localTs > remoteTs && fs.existsSync(file)) {
-      await uploadLocalSnapshot(client, file)
-      return { success: true, action: 'uploaded' }
-    }
-
-    if (remoteTs === localTs && remoteTs === 0) {
-      const remoteCardCount = getCardCount(remoteData)
-      const localCardCount = getCardCount(localData)
-      if (remoteCardCount > localCardCount) {
-        createBackup()
-        fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
-        await downloadRemoteImages(client)
-        return { success: true, action: 'downloaded', data: remoteData }
-      }
-      if (localCardCount > remoteCardCount && fs.existsSync(file)) {
-        await uploadLocalSnapshot(client, file)
-        return { success: true, action: 'uploaded' }
-      }
-    }
-
-    if (hasMissingLocalImages(remoteData)) {
-      await downloadRemoteImages(client)
-      return { success: true, action: 'downloaded', data: remoteData }
-    }
-
-    return { success: true, action: 'up-to-date' }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
+  })
 })
 
 ipcMain.handle('get-platform', () => process.platform)

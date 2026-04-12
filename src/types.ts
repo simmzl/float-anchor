@@ -108,6 +108,7 @@ declare global {
       webdavDownload: (config: WebDAVConfig) => Promise<{ success: boolean; data?: AppData; error?: string }>
       webdavAutoSync: (config: WebDAVConfig) => Promise<{ success: boolean; error?: string }>
       webdavStartupSync: (config: WebDAVConfig) => Promise<{ success: boolean; action?: string; data?: AppData; error?: string }>
+      webdavPeriodicSync: (config: WebDAVConfig) => Promise<{ success: boolean; action?: string; data?: AppData; error?: string }>
       onSyncStatus: (cb: (status: SyncStatus) => void) => void
       exportBackup: () => Promise<{ success: boolean; path?: string; fileName?: string; error?: string }>
       importBackup: () => Promise<{ success: boolean; data?: AppData; error?: string }>

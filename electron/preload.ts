@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webdavDownload: (config: any) => ipcRenderer.invoke('webdav-download', config),
   webdavAutoSync: (config: any) => ipcRenderer.invoke('webdav-auto-sync', config),
   webdavStartupSync: (config: any) => ipcRenderer.invoke('webdav-startup-sync', config),
+  webdavPeriodicSync: (config: any) => ipcRenderer.invoke('webdav-periodic-sync', config),
   onSyncStatus: (cb: (status: any) => void) => {
     ipcRenderer.on('sync-status', (_e, status) => cb(status))
   },
