@@ -13,6 +13,7 @@ import os
 import sys
 import uuid
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -861,6 +862,33 @@ def main():
             "canvases": canvases,
             "activeCanvasId": canvases[0]["id"] if canvases else None,
         }
+
+    def _count_canvas_items(canvas, name):
+        value = canvas.get(name)
+        return len(value) if isinstance(value, list) else 0
+
+    def _is_empty_default_canvas(canvas):
+        return (
+            canvas.get("name") == "默认画布"
+            and _count_canvas_items(canvas, "cards") == 0
+            and _count_canvas_items(canvas, "sections") == 0
+            and _count_canvas_items(canvas, "labels") == 0
+            and _count_canvas_items(canvas, "connections") == 0
+        )
+
+    if canvases and isinstance(fa_data.get("canvases"), list):
+        before_count = len(fa_data["canvases"])
+        fa_data["canvases"] = [c for c in fa_data["canvases"] if not _is_empty_default_canvas(c)]
+        removed_count = before_count - len(fa_data["canvases"])
+        if removed_count:
+            print(f"  Removed {removed_count} empty default canvas(es)")
+
+        canvas_ids = {c.get("id") for c in fa_data["canvases"]}
+        active_id = fa_data.get("activeCanvasId")
+        if fa_data["canvases"] and active_id not in canvas_ids:
+            fa_data["activeCanvasId"] = fa_data["canvases"][0]["id"]
+
+    fa_data["_syncTimestamp"] = int(time.time() * 1000)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
