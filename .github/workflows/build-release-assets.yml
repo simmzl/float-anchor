@@ -1,0 +1,130 @@
+name: Build Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build
+        required: true
+        default: v1.0.9
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-release-assets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="v1.0.9"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub release exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "FloatAnchor $TAG" \
+              --notes "Improve WebDAV bidirectional sync and restore missing remote image cache."
+
+  build-windows:
+    needs: prepare-release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm run build
+          .\node_modules\.bin\electron-builder.cmd --win --config.win.signAndEditExecutable=false
+
+      - name: Show Windows release assets
+        shell: pwsh
+        run: Get-ChildItem release | Format-Table Name,Length,LastWriteTime -AutoSize
+
+      - name: Upload Windows release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          gh release upload $env:TAG `
+            "release\FloatAnchor-1.0.9-win-setup.exe" `
+            "release\FloatAnchor-1.0.9-win-setup.exe.blockmap" `
+            "release\latest.yml" `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber
+
+  build-macos:
+    needs: prepare-release
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS packages
+        run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Show macOS release assets
+        run: ls -lah release
+
+      - name: Upload macOS release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          gh release upload "$TAG" \
+            release/FloatAnchor-1.0.9-mac-*.dmg \
+            release/FloatAnchor-1.0.9-mac-*.dmg.blockmap \
+            release/latest-mac.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
