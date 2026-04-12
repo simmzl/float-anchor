@@ -81,12 +81,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
-          gh release upload $env:TAG `
-            "release\FloatAnchor-*-win-setup.exe" `
-            "release\FloatAnchor-*-win-setup.exe.blockmap" `
-            "release\latest.yml" `
-            --repo $env:GITHUB_REPOSITORY `
-            --clobber
+          $assets = @(
+            (Get-ChildItem "release\FloatAnchor-*-win-setup.exe").FullName
+            (Get-ChildItem "release\FloatAnchor-*-win-setup.exe.blockmap").FullName
+            (Get-Item "release\latest.yml").FullName
+          )
+          gh release upload $env:TAG $assets --repo $env:GITHUB_REPOSITORY --clobber
 
   build-macos:
     needs: prepare-release
