@@ -11,6 +11,7 @@ interface AppState {
   loaded: boolean
   settings: AppSettings
   syncStatus: 'idle' | 'syncing' | 'success' | 'error'
+  imageCacheVersion: number
   showSettings: boolean
 
   loadData: () => Promise<void>
@@ -21,6 +22,7 @@ interface AppState {
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
   setShowSettings: (v: boolean) => void
   setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error') => void
+  refreshImageCache: () => void
 
   addCanvas: (name: string) => void
   deleteCanvas: (id: string) => void
@@ -69,6 +71,7 @@ export const useStore = create<AppState>((set, get) => ({
   loaded: false,
   settings: { theme: 'light' },
   syncStatus: 'idle',
+  imageCacheVersion: 0,
   showSettings: false,
 
   loadData: async () => {
@@ -110,17 +113,23 @@ export const useStore = create<AppState>((set, get) => ({
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
       const { canvases, activeCanvasId, settings } = get()
-      window.electronAPI.writeData({ canvases, activeCanvasId })
-      if (settings.webdav?.server) {
-        clearTimeout(syncTimer)
-        syncTimer = setTimeout(() => {
-          set({ syncStatus: 'syncing' })
-          window.electronAPI.webdavAutoSync(settings.webdav!).then((res) => {
-            set({ syncStatus: res.success ? 'success' : 'error' })
-            if (res.success) setTimeout(() => set({ syncStatus: 'idle' }), 3000)
-          }).catch(() => set({ syncStatus: 'error' }))
-        }, LOCAL_WEBDAV_SYNC_DELAY_MS)
-      }
+      void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
+        if (!saved) return
+        if (settings.webdav?.server) {
+          clearTimeout(syncTimer)
+          syncTimer = setTimeout(() => {
+            set({ syncStatus: 'syncing' })
+            window.electronAPI.webdavAutoSync(settings.webdav!).then(async (res) => {
+              if (res.success && res.action === 'downloaded' && res.data) {
+                await get().loadData()
+                get().refreshImageCache()
+              }
+              set({ syncStatus: res.success ? 'success' : 'error' })
+              if (res.success) setTimeout(() => set({ syncStatus: 'idle' }), 3000)
+            }).catch(() => set({ syncStatus: 'error' }))
+          }, LOCAL_WEBDAV_SYNC_DELAY_MS)
+        }
+      })
     }, 600)
   },
 
@@ -153,6 +162,8 @@ export const useStore = create<AppState>((set, get) => ({
   setShowSettings: (v) => set({ showSettings: v }),
 
   setSyncStatus: (s) => set({ syncStatus: s }),
+
+  refreshImageCache: () => set((s) => ({ imageCacheVersion: s.imageCacheVersion + 1 })),
 
   addCanvas: (name) => {
     const canvas: Canvas = { id: uuid(), name, cards: [] }

@@ -70,6 +70,15 @@ export interface AppSettings {
   webdav?: WebDAVConfig
 }
 
+export type WebDAVSyncAction = 'uploaded' | 'downloaded' | 'up-to-date'
+
+export interface WebDAVSyncResult {
+  success: boolean
+  action?: WebDAVSyncAction
+  data?: AppData | null
+  error?: string
+}
+
 interface UpdateInfo {
   version: string
   currentVersion: string
@@ -123,9 +132,9 @@ declare global {
       webdavTest: (config: WebDAVConfig) => Promise<{ success: boolean; error?: string }>
       webdavUpload: (config: WebDAVConfig) => Promise<{ success: boolean; error?: string }>
       webdavDownload: (config: WebDAVConfig) => Promise<{ success: boolean; data?: AppData; error?: string }>
-      webdavAutoSync: (config: WebDAVConfig) => Promise<{ success: boolean; error?: string }>
-      webdavStartupSync: (config: WebDAVConfig) => Promise<{ success: boolean; action?: string; data?: AppData; error?: string }>
-      webdavPeriodicSync: (config: WebDAVConfig) => Promise<{ success: boolean; action?: string; data?: AppData; error?: string }>
+      webdavAutoSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
+      webdavStartupSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
+      webdavPeriodicSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
       onSyncStatus: (cb: (status: SyncStatus) => void) => void
       exportBackup: () => Promise<{ success: boolean; path?: string; fileName?: string; error?: string }>
       importBackup: () => Promise<{ success: boolean; data?: AppData; error?: string }>

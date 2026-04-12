@@ -236,7 +236,11 @@ export default function SettingsModal() {
       setTestResult('ok')
       setTimeout(() => setTestResult('idle'), 2000)
       useStore.getState().setSyncStatus('syncing')
-      window.electronAPI.webdavAutoSync(config).then((syncRes) => {
+      window.electronAPI.webdavAutoSync(config).then(async (syncRes) => {
+        if (syncRes.success && syncRes.action === 'downloaded' && syncRes.data) {
+          await useStore.getState().loadData()
+          useStore.getState().refreshImageCache()
+        }
         useStore.getState().setSyncStatus(syncRes.success ? 'success' : 'error')
         if (syncRes.success) setTimeout(() => useStore.getState().setSyncStatus('idle'), 3000)
       }).catch(() => useStore.getState().setSyncStatus('error'))
@@ -252,11 +256,14 @@ export default function SettingsModal() {
     const store = useStore.getState()
     store.setSyncStatus('syncing')
     try {
-      store.persist()
-      await new Promise((r) => setTimeout(r, 500))
+      await window.electronAPI.writeData({
+        canvases: store.canvases,
+        activeCanvasId: store.activeCanvasId,
+      })
       const res = await window.electronAPI.webdavStartupSync(cfg)
       if (res.success && res.action === 'downloaded' && res.data) {
         await store.loadData()
+        store.refreshImageCache()
       }
       store.setSyncStatus(res.success ? 'success' : 'error')
       if (res.success) setTimeout(() => useStore.getState().setSyncStatus('idle'), 3000)

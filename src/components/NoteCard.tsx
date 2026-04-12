@@ -66,6 +66,7 @@ function FaCardLink({ targetId }: { targetId: string }) {
 const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, selected }: Props) {
   const card = useCardById(cardId)
   const isEditing = useIsEditing(cardId)
+  const imageCacheVersion = useStore((s) => s.imageCacheVersion)
   const { moveCard, deleteCard, updateCard, setEditingCard } = useCardActions()
 
   const [isDragging, setIsDragging] = useState(false)
@@ -281,6 +282,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
     },
     img: ({ src, alt, ...props }) => (
       <img
+        key={`${src || ''}-${imageCacheVersion}`}
         src={src}
         alt={alt || ''}
         {...props}
@@ -298,7 +300,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
         }}
       />
     ),
-  }), [])
+  }), [imageCacheVersion])
 
   const renderedContent = useMemo(() => {
     if (!card?.content) return null

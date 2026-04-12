@@ -68,6 +68,7 @@ export default function App() {
         if (res.action === 'downloaded' && res.data) {
           await useStore.getState().loadData()
           if (disposed) return
+          useStore.getState().refreshImageCache()
         }
 
         if (res.action === 'uploaded' || res.action === 'downloaded') {
@@ -103,6 +104,7 @@ export default function App() {
       const store = useStore.getState()
       if (res.success && res.action === 'downloaded' && res.data) {
         await store.loadData()
+        store.refreshImageCache()
       }
       if (!res.success) {
         store.setSyncStatus('error')
