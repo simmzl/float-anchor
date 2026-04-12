@@ -227,10 +227,10 @@ def extract_image_file_ids(card, token: str = None, images_dir: str = None) -> t
                     status, img_path = download_heptabase_image(fid, images_dir, token)
                     if status == "ok":
                         stats["downloaded"] += 1
-                        urls.append(f"fa-img://{Path(img_path).stem}")
+                        urls.append(f"fa-img://{Path(img_path).name}")
                     elif status == "cached":
                         stats["cached"] += 1
-                        urls.append(f"fa-img://{Path(img_path).stem}")
+                        urls.append(f"fa-img://{Path(img_path).name}")
                     else:
                         stats["failed"] += 1
                         urls.append("")
