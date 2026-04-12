@@ -32,4 +32,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSyncStatus: (cb: (status: any) => void) => {
     ipcRenderer.on('sync-status', (_e, status) => cb(status))
   },
+  exportBackup: () => ipcRenderer.invoke('export-backup'),
+  importBackup: () => ipcRenderer.invoke('import-backup'),
+  checkBackupExists: () => ipcRenderer.invoke('check-backup-exists'),
+  clearAllData: () => ipcRenderer.invoke('clear-all-data'),
+  getBackupDir: () => ipcRenderer.invoke('get-backup-dir'),
 })

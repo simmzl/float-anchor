@@ -9,6 +9,102 @@ export default function SettingsModal() {
   const setWebDAVConfig = useStore((s) => s.setWebDAVConfig)
   const setShowSettings = useStore((s) => s.setShowSettings)
 
+  const [backupStatus, setBackupStatus] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle')
+  const [backupMessage, setBackupMessage] = useState('')
+  const [importStatus, setImportStatus] = useState<'idle' | 'importing' | 'success' | 'error'>('idle')
+  const [importMessage, setImportMessage] = useState('')
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [clearInput, setClearInput] = useState('')
+  const [clearStatus, setClearStatus] = useState<'idle' | 'no-backup' | 'ready' | 'clearing' | 'done'>('idle')
+  const [clearMessage, setClearMessage] = useState('')
+
+  const CLEAR_CONFIRM_TEXT = '我已明确该操作会清空所有内容，执行'
+
+  const handleExport = useCallback(async () => {
+    setBackupStatus('exporting')
+    setBackupMessage('')
+    try {
+      const res = await window.electronAPI.exportBackup()
+      if (res.success) {
+        setBackupStatus('success')
+        setBackupMessage(`备份成功：${res.fileName}`)
+        setTimeout(() => { setBackupStatus('idle'); setBackupMessage('') }, 5000)
+      } else {
+        setBackupStatus('error')
+        setBackupMessage(res.error || '导出失败')
+        setTimeout(() => { setBackupStatus('idle'); setBackupMessage('') }, 5000)
+      }
+    } catch {
+      setBackupStatus('error')
+      setBackupMessage('导出时发生错误')
+      setTimeout(() => { setBackupStatus('idle'); setBackupMessage('') }, 5000)
+    }
+  }, [])
+
+  const handleImport = useCallback(async () => {
+    setImportStatus('importing')
+    setImportMessage('')
+    try {
+      const res = await window.electronAPI.importBackup()
+      if (res.success && res.data) {
+        setImportStatus('success')
+        setImportMessage('导入成功，正在重新加载数据...')
+        await useStore.getState().loadData()
+        setTimeout(() => { setImportStatus('idle'); setImportMessage('') }, 3000)
+      } else if (res.error === 'cancelled') {
+        setImportStatus('idle')
+      } else {
+        setImportStatus('error')
+        setImportMessage(res.error || '导入失败')
+        setTimeout(() => { setImportStatus('idle'); setImportMessage('') }, 5000)
+      }
+    } catch {
+      setImportStatus('error')
+      setImportMessage('导入时发生错误')
+      setTimeout(() => { setImportStatus('idle'); setImportMessage('') }, 5000)
+    }
+  }, [])
+
+  const handleClearClick = useCallback(async () => {
+    setClearInput('')
+    setClearMessage('')
+    const res = await window.electronAPI.checkBackupExists()
+    if (!res.exists) {
+      setClearStatus('no-backup')
+      setClearMessage('未检测到备份文件，请先导出备份后再执行清空操作。')
+      setShowClearConfirm(true)
+      return
+    }
+    setClearStatus('ready')
+    setShowClearConfirm(true)
+  }, [])
+
+  const handleClearConfirm = useCallback(async () => {
+    if (clearInput !== CLEAR_CONFIRM_TEXT) return
+    setClearStatus('clearing')
+    setClearMessage('')
+    try {
+      const res = await window.electronAPI.clearAllData()
+      if (res.success) {
+        setClearStatus('done')
+        setClearMessage('所有数据已清空')
+        await useStore.getState().loadData()
+        setTimeout(() => {
+          setShowClearConfirm(false)
+          setClearStatus('idle')
+          setClearMessage('')
+          setClearInput('')
+        }, 2000)
+      } else {
+        setClearStatus('ready')
+        setClearMessage(res.error || '清空失败')
+      }
+    } catch {
+      setClearStatus('ready')
+      setClearMessage('清空时发生错误')
+    }
+  }, [clearInput])
+
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'installing' | 'error'>('idle')
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [updateProgress, setUpdateProgress] = useState(0)
@@ -297,6 +393,123 @@ export default function SettingsModal() {
             </div>
           </div>
         </div>
+
+        <div className="settings-section">
+          <h3>数据管理</h3>
+          <div className="data-management">
+            <div className="data-management-row">
+              <div className="data-management-item">
+                <button
+                  className="data-btn export-btn"
+                  onClick={handleExport}
+                  disabled={backupStatus === 'exporting'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {backupStatus === 'exporting' ? '导出中...' : '导出备份'}
+                </button>
+                <span className="data-hint">将所有数据导出为压缩包备份</span>
+              </div>
+              <div className="data-management-item">
+                <button
+                  className="data-btn import-btn"
+                  onClick={handleImport}
+                  disabled={importStatus === 'importing'}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  {importStatus === 'importing' ? '导入中...' : '导入备份'}
+                </button>
+                <span className="data-hint">从备份文件恢复数据</span>
+              </div>
+            </div>
+            {backupMessage && (
+              <div className={`data-message ${backupStatus === 'error' ? 'error' : 'success'}`}>
+                {backupMessage}
+              </div>
+            )}
+            {importMessage && (
+              <div className={`data-message ${importStatus === 'error' ? 'error' : 'success'}`}>
+                {importMessage}
+              </div>
+            )}
+            <div className="data-management-danger">
+              <button
+                className="data-btn danger-btn"
+                onClick={handleClearClick}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+                清空所有数据
+              </button>
+              <span className="data-hint danger-hint">此操作不可恢复，请谨慎操作</span>
+            </div>
+          </div>
+        </div>
+
+        {showClearConfirm && (
+          <div className="clear-confirm-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage(''); setClearInput('') } }}>
+            <div className="clear-confirm-modal">
+              <h3>清空所有数据</h3>
+              {clearStatus === 'no-backup' ? (
+                <div className="clear-warning">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>{clearMessage}</span>
+                </div>
+              ) : (
+                <>
+                  <p className="clear-desc">此操作将永久删除所有画布、卡片、标题、分区和连线数据。请输入以下文字确认：</p>
+                  <p className="clear-confirm-text">{CLEAR_CONFIRM_TEXT}</p>
+                  <input
+                    className="clear-input"
+                    value={clearInput}
+                    onChange={(e) => setClearInput(e.target.value)}
+                    placeholder="请输入上方文字以确认"
+                    disabled={clearStatus === 'clearing' || clearStatus === 'done'}
+                  />
+                  {clearMessage && (
+                    <div className={`data-message ${clearStatus === 'done' ? 'success' : 'error'}`}>
+                      {clearMessage}
+                    </div>
+                  )}
+                  <div className="clear-confirm-actions">
+                    <button onClick={() => { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage(''); setClearInput('') }}>
+                      取消
+                    </button>
+                    <button
+                      className="danger-btn"
+                      disabled={clearInput !== CLEAR_CONFIRM_TEXT || clearStatus === 'clearing' || clearStatus === 'done'}
+                      onClick={handleClearConfirm}
+                    >
+                      {clearStatus === 'clearing' ? '清空中...' : clearStatus === 'done' ? '已清空' : '确认清空'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {clearStatus === 'no-backup' && (
+                <div className="clear-confirm-actions">
+                  <button onClick={() => { setShowClearConfirm(false); setClearStatus('idle'); setClearMessage('') }}>
+                    我知道了
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="settings-footer">
           <button onClick={() => setShowSettings(false)}>关闭</button>

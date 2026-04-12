@@ -1,7 +1,7 @@
 {
   "name": "float-anchor",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "FloatAnchor - 白板卡片笔记应用",
   "author": "FloatAnchor",
   "main": "dist-electron/main.js",
@@ -86,6 +86,8 @@
     "@tiptap/pm": "^3.22.1",
     "@tiptap/react": "^3.22.1",
     "@tiptap/starter-kit": "^3.22.1",
+    "adm-zip": "^0.5.17",
+    "archiver": "^7.0.1",
     "marked": "^17.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -98,6 +100,8 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/archiver": "^7.0.0",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@types/turndown": "^5.0.6",

@@ -1,8 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { exec } from 'node:child_process'
+import archiver from 'archiver'
+import AdmZip from 'adm-zip'
 
 let dataDir = ''
 let dataFile = ''
@@ -377,6 +379,7 @@ ipcMain.handle('write-settings', async (_event, data: unknown) => {
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 const WEBDAV_REMOTE_DIR = 'FloatAnchor'
 const WEBDAV_REMOTE_FILE = 'FloatAnchor/float-anchor.json'
+const WEBDAV_REMOTE_IMAGES_DIR = 'FloatAnchor/images'
 const MAX_BACKUPS = 5
 
 function createBackup() {
@@ -404,15 +407,116 @@ async function getWebDAVClient(config: { server: string; username: string; passw
   })
 }
 
-async function ensureRemoteDir(client: any) {
+function getImagesDir() {
+  const { dataDir: dir } = getDataPaths()
+  return path.join(dir, 'images')
+}
+
+async function ensureRemoteDirectory(client: any, remoteDir: string) {
   try {
-    const exists = await client.exists(WEBDAV_REMOTE_DIR)
+    const exists = await client.exists(remoteDir)
     if (!exists) {
-      await client.createDirectory(WEBDAV_REMOTE_DIR)
+      await client.createDirectory(remoteDir)
     }
   } catch (err) {
-    console.log('ensureRemoteDir note:', err)
+    console.log(`ensureRemoteDirectory note for ${remoteDir}:`, err)
   }
+}
+
+async function ensureRemoteDir(client: any) {
+  await ensureRemoteDirectory(client, WEBDAV_REMOTE_DIR)
+}
+
+function listLocalImageFiles(imagesDir: string): string[] {
+  if (!fs.existsSync(imagesDir)) return []
+  return fs.readdirSync(imagesDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort()
+}
+
+function toBinaryBuffer(content: unknown): Buffer {
+  if (Buffer.isBuffer(content)) return content
+  if (content instanceof Uint8Array) return Buffer.from(content)
+  if (content instanceof ArrayBuffer) return Buffer.from(content)
+  if (typeof content === 'string') return Buffer.from(content, 'binary')
+  return Buffer.from([])
+}
+
+async function uploadLocalImages(client: any) {
+  const imagesDir = getImagesDir()
+  const imageFiles = listLocalImageFiles(imagesDir)
+  if (imageFiles.length === 0) return 0
+
+  await ensureRemoteDirectory(client, WEBDAV_REMOTE_IMAGES_DIR)
+  for (const fileName of imageFiles) {
+    const filePath = path.join(imagesDir, fileName)
+    await client.putFileContents(`${WEBDAV_REMOTE_IMAGES_DIR}/${fileName}`, fs.readFileSync(filePath), { overwrite: true })
+  }
+  return imageFiles.length
+}
+
+async function downloadRemoteImages(client: any) {
+  const exists = await client.exists(WEBDAV_REMOTE_IMAGES_DIR)
+  if (!exists) return 0
+
+  const entries = await client.getDirectoryContents(WEBDAV_REMOTE_IMAGES_DIR)
+  const files = (Array.isArray(entries) ? entries : [entries]).filter((entry: any) => entry?.type === 'file')
+  if (files.length === 0) return 0
+
+  const imagesDir = getImagesDir()
+  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true })
+
+  for (const entry of files) {
+    const remotePath = typeof entry.filename === 'string'
+      ? entry.filename
+      : `${WEBDAV_REMOTE_IMAGES_DIR}/${entry.basename}`
+    const fileName = entry.basename || path.posix.basename(remotePath)
+    if (!fileName) continue
+    const binary = await client.getFileContents(remotePath, { format: 'binary' })
+    fs.writeFileSync(path.join(imagesDir, fileName), toBinaryBuffer(binary))
+  }
+
+  return files.length
+}
+
+function getCardCount(data: any) {
+  return (data?.canvases || []).reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
+}
+
+function hasMissingLocalImages(data: any) {
+  const imagesDir = getImagesDir()
+  const referenced = new Set<string>()
+
+  for (const canvas of data?.canvases || []) {
+    for (const card of canvas.cards || []) {
+      const content = typeof card.content === 'string' ? card.content : ''
+      for (const match of content.matchAll(/fa-img:\/\/([^\s)]+)/g)) {
+        referenced.add(decodeURIComponent(match[1]))
+      }
+    }
+  }
+
+  for (const fileName of referenced) {
+    if (!fs.existsSync(path.join(imagesDir, fileName))) {
+      return true
+    }
+  }
+
+  return false
+}
+
+async function uploadLocalSnapshot(client: any, file: string) {
+  const raw = fs.readFileSync(file, 'utf-8')
+  const data = JSON.parse(raw)
+  data._syncTimestamp = Date.now()
+
+  await ensureRemoteDir(client)
+  await uploadLocalImages(client)
+  await client.putFileContents(WEBDAV_REMOTE_FILE, JSON.stringify(data, null, 2), { overwrite: true })
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8')
+
+  return data
 }
 
 ipcMain.handle('webdav-test', async (_event, config: { server: string; username: string; password: string }) => {
@@ -431,12 +535,7 @@ ipcMain.handle('webdav-upload', async (_event, config: { server: string; usernam
     const { dataFile: file } = getDataPaths()
     if (!fs.existsSync(file)) return { success: false, error: 'No data file' }
     const client = await getWebDAVClient(config)
-    await ensureRemoteDir(client)
-    const raw = fs.readFileSync(file, 'utf-8')
-    const data = JSON.parse(raw)
-    data._syncTimestamp = Date.now()
-    await client.putFileContents(WEBDAV_REMOTE_FILE, JSON.stringify(data, null, 2), { overwrite: true })
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8')
+    await uploadLocalSnapshot(client, file)
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -451,6 +550,7 @@ ipcMain.handle('webdav-download', async (_event, config: { server: string; usern
     }
     const raw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
     const data = JSON.parse(raw as string)
+    await downloadRemoteImages(client)
     return { success: true, data }
   } catch (err) {
     return { success: false, error: String(err) }
@@ -463,12 +563,7 @@ ipcMain.handle('webdav-auto-sync', async (_event, config: { server: string; user
     if (!fs.existsSync(file)) return { success: false }
     createBackup()
     const client = await getWebDAVClient(config)
-    await ensureRemoteDir(client)
-    const localRaw = fs.readFileSync(file, 'utf-8')
-    const localData = JSON.parse(localRaw)
-    localData._syncTimestamp = Date.now()
-    await client.putFileContents(WEBDAV_REMOTE_FILE, JSON.stringify(localData, null, 2), { overwrite: true })
-    fs.writeFileSync(file, JSON.stringify(localData, null, 2), 'utf-8')
+    await uploadLocalSnapshot(client, file)
     mainWindow?.webContents.send('sync-status', { status: 'success' })
     return { success: true }
   } catch (err) {
@@ -483,45 +578,52 @@ ipcMain.handle('webdav-startup-sync', async (_event, config: { server: string; u
     const client = await getWebDAVClient(config)
     if (!await client.exists(WEBDAV_REMOTE_FILE)) {
       if (fs.existsSync(file)) {
-        await ensureRemoteDir(client)
-        const raw = fs.readFileSync(file, 'utf-8')
-        const data = JSON.parse(raw)
-        data._syncTimestamp = Date.now()
-        await client.putFileContents(WEBDAV_REMOTE_FILE, JSON.stringify(data, null, 2), { overwrite: true })
-        fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8')
+        await uploadLocalSnapshot(client, file)
       }
       return { success: true, action: 'uploaded' }
     }
     const remoteRaw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
     const remoteData = JSON.parse(remoteRaw as string)
     const remoteTs = remoteData._syncTimestamp || 0
+    let localData: any = null
     let localTs = 0
     if (fs.existsSync(file)) {
       try {
-        const localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
+        localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
         localTs = localData._syncTimestamp || 0
       } catch {}
     }
+
     if (remoteTs > localTs) {
       createBackup()
       fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
+      await downloadRemoteImages(client)
       return { success: true, action: 'downloaded', data: remoteData }
     }
 
+    if (localTs > remoteTs && fs.existsSync(file)) {
+      await uploadLocalSnapshot(client, file)
+      return { success: true, action: 'uploaded' }
+    }
+
     if (remoteTs === localTs && remoteTs === 0) {
-      const remoteCardCount = (remoteData.canvases || []).reduce((sum: number, c: any) => sum + (c.cards?.length || 0), 0)
-      let localCardCount = 0
-      if (fs.existsSync(file)) {
-        try {
-          const localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
-          localCardCount = (localData.canvases || []).reduce((sum: number, c: any) => sum + (c.cards?.length || 0), 0)
-        } catch {}
-      }
+      const remoteCardCount = getCardCount(remoteData)
+      const localCardCount = getCardCount(localData)
       if (remoteCardCount > localCardCount) {
         createBackup()
         fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
+        await downloadRemoteImages(client)
         return { success: true, action: 'downloaded', data: remoteData }
       }
+      if (localCardCount > remoteCardCount && fs.existsSync(file)) {
+        await uploadLocalSnapshot(client, file)
+        return { success: true, action: 'uploaded' }
+      }
+    }
+
+    if (hasMissingLocalImages(remoteData)) {
+      await downloadRemoteImages(client)
+      return { success: true, action: 'downloaded', data: remoteData }
     }
 
     return { success: true, action: 'up-to-date' }
@@ -531,6 +633,183 @@ ipcMain.handle('webdav-startup-sync', async (_event, config: { server: string; u
 })
 
 ipcMain.handle('get-platform', () => process.platform)
+
+/* ===== Backup / Restore / Clear ===== */
+
+function getBackupDir(): string {
+  if (process.platform === 'darwin') {
+    return path.join(app.getPath('documents'), 'FloatAnchor-Backups')
+  }
+  return path.join(app.getPath('documents'), 'FloatAnchor-Backups')
+}
+
+ipcMain.handle('get-backup-dir', () => getBackupDir())
+
+ipcMain.handle('export-backup', async () => {
+  try {
+    const { dataFile: file, dataDir: dir } = getDataPaths()
+    if (!fs.existsSync(file)) {
+      return { success: false, error: '没有找到数据文件' }
+    }
+
+    const backupDir = getBackupDir()
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true })
+    }
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
+    const zipName = `FloatAnchor-backup-${ts}.zip`
+    const zipPath = path.join(backupDir, zipName)
+
+    await new Promise<void>((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath)
+      const archive = archiver('zip', { zlib: { level: 9 } })
+
+      output.on('close', () => resolve())
+      archive.on('error', (err) => reject(err))
+
+      archive.pipe(output)
+      archive.file(file, { name: 'float-anchor.json' })
+
+      const imagesDir = path.join(dir, 'images')
+      if (fs.existsSync(imagesDir)) {
+        archive.directory(imagesDir, 'images')
+      }
+
+      archive.finalize()
+    })
+
+    return { success: true, path: zipPath, fileName: zipName }
+  } catch (err) {
+    console.error('Export backup failed:', err)
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('import-backup', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择备份文件',
+      filters: [{ name: 'FloatAnchor Backup', extensions: ['zip'] }],
+      properties: ['openFile'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, error: 'cancelled' }
+    }
+
+    const zipPath = result.filePaths[0]
+    const zip = new AdmZip(zipPath)
+    const dataEntry = zip.getEntry('float-anchor.json')
+    if (!dataEntry) {
+      return { success: false, error: '无效的备份文件：缺少 float-anchor.json' }
+    }
+
+    const importedRaw = zip.readAsText(dataEntry)
+    const importedData = JSON.parse(importedRaw)
+
+    if (!importedData.canvases || !Array.isArray(importedData.canvases)) {
+      return { success: false, error: '无效的备份文件：数据格式不正确' }
+    }
+
+    const { dataFile: file, dataDir: dir } = getDataPaths()
+    ensureDataDir()
+
+    let existingData: any = { canvases: [], activeCanvasId: null }
+    if (fs.existsSync(file)) {
+      try {
+        existingData = JSON.parse(fs.readFileSync(file, 'utf-8'))
+      } catch {}
+    }
+
+    const existingCanvasMap = new Map<string, any>()
+    for (const c of existingData.canvases || []) {
+      existingCanvasMap.set(c.id, c)
+    }
+
+    for (const importedCanvas of importedData.canvases) {
+      const existing = existingCanvasMap.get(importedCanvas.id)
+      if (existing) {
+        const existingCardMap = new Map<string, any>()
+        for (const card of existing.cards || []) existingCardMap.set(card.id, card)
+        for (const card of importedCanvas.cards || []) existingCardMap.set(card.id, card)
+        existing.cards = Array.from(existingCardMap.values())
+
+        const existingLabelMap = new Map<string, any>()
+        for (const l of existing.labels || []) existingLabelMap.set(l.id, l)
+        for (const l of importedCanvas.labels || []) existingLabelMap.set(l.id, l)
+        existing.labels = Array.from(existingLabelMap.values())
+
+        const existingSectionMap = new Map<string, any>()
+        for (const s of existing.sections || []) existingSectionMap.set(s.id, s)
+        for (const s of importedCanvas.sections || []) existingSectionMap.set(s.id, s)
+        existing.sections = Array.from(existingSectionMap.values())
+
+        const existingConnMap = new Map<string, any>()
+        for (const cn of existing.connections || []) existingConnMap.set(cn.id, cn)
+        for (const cn of importedCanvas.connections || []) existingConnMap.set(cn.id, cn)
+        existing.connections = Array.from(existingConnMap.values())
+
+        if (importedCanvas.viewport) existing.viewport = importedCanvas.viewport
+        if (importedCanvas.name) existing.name = importedCanvas.name
+
+        existingCanvasMap.set(importedCanvas.id, existing)
+      } else {
+        existingCanvasMap.set(importedCanvas.id, importedCanvas)
+      }
+    }
+
+    const mergedData = {
+      canvases: Array.from(existingCanvasMap.values()),
+      activeCanvasId: importedData.activeCanvasId || existingData.activeCanvasId,
+    }
+
+    fs.writeFileSync(file, JSON.stringify(mergedData, null, 2), 'utf-8')
+
+    const imagesDir = path.join(dir, 'images')
+    const imageEntries = zip.getEntries().filter((e) => e.entryName.startsWith('images/') && !e.isDirectory)
+    if (imageEntries.length > 0) {
+      if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true })
+      for (const entry of imageEntries) {
+        const fileName = path.basename(entry.entryName)
+        const destPath = path.join(imagesDir, fileName)
+        fs.writeFileSync(destPath, entry.getData())
+      }
+    }
+
+    return { success: true, data: mergedData }
+  } catch (err) {
+    console.error('Import backup failed:', err)
+    return { success: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('check-backup-exists', async () => {
+  try {
+    const backupDir = getBackupDir()
+    if (!fs.existsSync(backupDir)) return { exists: false }
+    const files = fs.readdirSync(backupDir).filter((f) => f.endsWith('.zip') && f.startsWith('FloatAnchor-backup-'))
+    return { exists: files.length > 0, count: files.length, dir: backupDir }
+  } catch {
+    return { exists: false }
+  }
+})
+
+ipcMain.handle('clear-all-data', async () => {
+  try {
+    const { dataFile: file } = getDataPaths()
+    const emptyData = {
+      canvases: [],
+      activeCanvasId: null,
+    }
+    ensureDataDir()
+    fs.writeFileSync(file, JSON.stringify(emptyData, null, 2), 'utf-8')
+    return { success: true, data: emptyData }
+  } catch (err) {
+    console.error('Clear all data failed:', err)
+    return { success: false, error: String(err) }
+  }
+})
 
 ipcMain.on('win-minimize', (e) => {
   BrowserWindow.fromWebContents(e.sender)?.minimize()
