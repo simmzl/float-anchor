@@ -56,7 +56,7 @@
 |------|------|----------|
 | `FloatAnchor-1.0.11-mac-arm64.dmg` | macOS | Apple Silicon (M1/M2/M3/M4) |
 | `FloatAnchor-1.0.11-mac-x64.dmg` | macOS | Intel Mac |
-| `FloatAnchor-<version>-win-setup.exe` | Windows | 64 位 Windows |
+| `FloatAnchor-1.0.11-win-setup.exe` | Windows | 64 位 Windows |
 
 ### macOS 安装
 
