@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '../store'
-import type { WebDAVConfig } from '../types'
+import type { WebDAVConfig, WebDAVSyncResolution, WebDAVSyncResult, WebDAVSyncSummary } from '../types'
 
 export default function SettingsModal() {
   const settings = useStore((s) => s.settings)
   const syncStatus = useStore((s) => s.syncStatus)
+  const syncDecision = useStore((s) => s.syncDecision)
   const setTheme = useStore((s) => s.setTheme)
   const setWebDAVConfig = useStore((s) => s.setWebDAVConfig)
   const setShowSettings = useStore((s) => s.setShowSettings)
+  const setSyncDecision = useStore((s) => s.setSyncDecision)
 
   const [backupStatus, setBackupStatus] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle')
   const [backupMessage, setBackupMessage] = useState('')
@@ -207,6 +209,48 @@ export default function SettingsModal() {
   const [password, setPassword] = useState(settings.webdav?.password || '')
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connected, setConnected] = useState(!!settings.webdav?.server)
+  const [syncResolveLoading, setSyncResolveLoading] = useState<WebDAVSyncResolution | null>(null)
+
+  const formatSyncSummary = useCallback((summary: WebDAVSyncSummary) => {
+    return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线`
+  }, [])
+
+  const markSyncSuccess = useCallback(() => {
+    useStore.getState().setSyncStatus('success')
+    setTimeout(() => {
+      if (useStore.getState().syncStatus === 'success') {
+        useStore.getState().setSyncStatus('idle')
+      }
+    }, 3000)
+  }, [])
+
+  const applySyncResult = useCallback(async (syncRes: WebDAVSyncResult) => {
+    const store = useStore.getState()
+    if (!syncRes.success) {
+      store.setSyncStatus('error')
+      return
+    }
+
+    if (syncRes.action === 'needs-confirmation' && syncRes.decision) {
+      store.setSyncDecision(syncRes.decision)
+      store.setSyncStatus('warning')
+      return
+    }
+
+    store.setSyncDecision(null)
+
+    if (syncRes.action === 'downloaded' && syncRes.data) {
+      await store.loadData()
+      store.refreshImageCache()
+    }
+
+    if (syncRes.action === 'uploaded' || syncRes.action === 'downloaded') {
+      markSyncSuccess()
+      return
+    }
+
+    store.setSyncStatus('idle')
+  }, [markSyncSuccess])
 
   useEffect(() => {
     if (settings.webdav) {
@@ -237,18 +281,13 @@ export default function SettingsModal() {
       setTimeout(() => setTestResult('idle'), 2000)
       useStore.getState().setSyncStatus('syncing')
       window.electronAPI.webdavAutoSync(config).then(async (syncRes) => {
-        if (syncRes.success && syncRes.action === 'downloaded' && syncRes.data) {
-          await useStore.getState().loadData()
-          useStore.getState().refreshImageCache()
-        }
-        useStore.getState().setSyncStatus(syncRes.success ? 'success' : 'error')
-        if (syncRes.success) setTimeout(() => useStore.getState().setSyncStatus('idle'), 3000)
+        await applySyncResult(syncRes)
       }).catch(() => useStore.getState().setSyncStatus('error'))
     } else {
       setTestResult('fail')
       setTimeout(() => setTestResult('idle'), 3000)
     }
-  }, [server, username, password, setWebDAVConfig])
+  }, [applySyncResult, server, username, password, setWebDAVConfig])
 
   const handleManualSync = useCallback(async () => {
     const cfg = settings.webdav
@@ -261,24 +300,43 @@ export default function SettingsModal() {
         activeCanvasId: store.activeCanvasId,
       })
       const res = await window.electronAPI.webdavStartupSync(cfg)
-      if (res.success && res.action === 'downloaded' && res.data) {
-        await store.loadData()
-        store.refreshImageCache()
-      }
-      store.setSyncStatus(res.success ? 'success' : 'error')
-      if (res.success) setTimeout(() => useStore.getState().setSyncStatus('idle'), 3000)
+      await applySyncResult(res)
     } catch {
       store.setSyncStatus('error')
     }
-  }, [settings.webdav])
+  }, [applySyncResult, settings.webdav])
+
+  const handleResolveSync = useCallback(async (resolution: WebDAVSyncResolution) => {
+    const cfg = settings.webdav
+    if (!cfg?.server) return
+    if (resolution === 'use-remote' && syncDecision?.risk === 'high') {
+      const confirmed = window.confirm(
+        `这是高危覆盖操作。\n\n本地：${formatSyncSummary(syncDecision.localSummary)}\n云端：${formatSyncSummary(syncDecision.remoteSummary)}\n\n继续后，当前本地大量数据会被云端覆盖。确定继续吗？`,
+      )
+      if (!confirmed) return
+    }
+
+    setSyncResolveLoading(resolution)
+    useStore.getState().setSyncStatus('syncing')
+    try {
+      const res = await window.electronAPI.webdavResolveConflict(cfg, resolution)
+      await applySyncResult(res)
+    } catch {
+      useStore.getState().setSyncStatus('error')
+    } finally {
+      setSyncResolveLoading(null)
+    }
+  }, [applySyncResult, formatSyncSummary, settings.webdav, syncDecision])
 
   const handleDisconnect = useCallback(() => {
     setWebDAVConfig(undefined)
+    setSyncDecision(null)
+    useStore.getState().setSyncStatus('idle')
     setConnected(false)
     setUsername('')
     setPassword('')
     setTestResult('idle')
-  }, [setWebDAVConfig])
+  }, [setSyncDecision, setWebDAVConfig])
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) setShowSettings(false)
@@ -286,6 +344,8 @@ export default function SettingsModal() {
 
   const syncLabel = syncStatus === 'syncing'
     ? '同步中...'
+    : syncStatus === 'warning'
+    ? '待确认同步策略'
     : syncStatus === 'success'
     ? '已同步'
     : syncStatus === 'error'
@@ -294,6 +354,8 @@ export default function SettingsModal() {
 
   const syncDotClass = syncStatus === 'syncing'
     ? 'syncing'
+    : syncStatus === 'warning'
+    ? 'warning'
     : syncStatus === 'error'
     ? 'error'
     : connected ? 'connected' : ''
@@ -417,8 +479,8 @@ export default function SettingsModal() {
               <button className="primary" onClick={handleSave}>保存</button>
               {connected && (
                 <>
-                  <button onClick={handleManualSync} disabled={syncStatus === 'syncing'}>
-                    {syncStatus === 'syncing' ? '同步中...' : '同步'}
+                  <button onClick={handleManualSync} disabled={syncStatus === 'syncing' || !!syncDecision || !!syncResolveLoading}>
+                    {syncStatus === 'syncing' ? '同步中...' : syncDecision ? '待确认' : '同步'}
                   </button>
                   <button onClick={handleDisconnect}>断开</button>
                 </>
@@ -428,6 +490,45 @@ export default function SettingsModal() {
               <span className={`sync-dot ${syncDotClass}`} />
               <span>{syncLabel}</span>
             </div>
+            {syncDecision && (
+              <div className={`sync-decision-card ${syncDecision.risk === 'high' ? 'high-risk' : ''}`}>
+                <div className="sync-decision-title">
+                  {syncDecision.risk === 'high' ? '检测到高危云端覆盖' : '检测到云端与本地数据不同步'}
+                </div>
+                <div className={`data-message ${syncDecision.risk === 'high' ? 'error' : 'success'}`}>
+                  {syncDecision.message}
+                </div>
+                <div className="sync-decision-summary">
+                  <div className="sync-decision-row">
+                    <span className="sync-decision-label">本地</span>
+                    <span>{formatSyncSummary(syncDecision.localSummary)}</span>
+                  </div>
+                  <div className="sync-decision-row">
+                    <span className="sync-decision-label">云端</span>
+                    <span>{formatSyncSummary(syncDecision.remoteSummary)}</span>
+                  </div>
+                </div>
+                <div className="sync-decision-note">
+                  当前仍以本地数据为准展示，自动同步已暂停，等你确认后再继续。
+                </div>
+                <div className="sync-decision-actions">
+                  <button
+                    className="primary"
+                    onClick={() => handleResolveSync('keep-local')}
+                    disabled={!!syncResolveLoading}
+                  >
+                    {syncResolveLoading === 'keep-local' ? '上传中...' : '保留本地并上传云端'}
+                  </button>
+                  <button
+                    className={syncDecision.risk === 'high' ? 'danger' : ''}
+                    onClick={() => handleResolveSync('use-remote')}
+                    disabled={!!syncResolveLoading}
+                  >
+                    {syncResolveLoading === 'use-remote' ? '覆盖中...' : '使用云端覆盖本地'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

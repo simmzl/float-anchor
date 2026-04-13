@@ -70,12 +70,35 @@ export interface AppSettings {
   webdav?: WebDAVConfig
 }
 
-export type WebDAVSyncAction = 'uploaded' | 'downloaded' | 'up-to-date'
+export interface WebDAVSyncSummary {
+  canvasCount: number
+  cardCount: number
+  labelCount: number
+  sectionCount: number
+  connectionCount: number
+  totalEntityCount: number
+}
+
+export interface WebDAVSyncDecision {
+  reason: 'remote-newer' | 'diverged' | 'destructive-remote'
+  risk: 'low' | 'high'
+  message: string
+  preferredResolution: 'keep-local' | 'use-remote'
+  localSummary: WebDAVSyncSummary
+  remoteSummary: WebDAVSyncSummary
+  localTimestamp: number
+  remoteTimestamp: number
+}
+
+export type WebDAVSyncResolution = 'keep-local' | 'use-remote'
+
+export type WebDAVSyncAction = 'uploaded' | 'downloaded' | 'up-to-date' | 'needs-confirmation'
 
 export interface WebDAVSyncResult {
   success: boolean
   action?: WebDAVSyncAction
   data?: AppData | null
+  decision?: WebDAVSyncDecision
   error?: string
 }
 
@@ -93,7 +116,7 @@ interface UpdateProgress {
 }
 
 interface SyncStatus {
-  status: 'syncing' | 'success' | 'error'
+  status: 'syncing' | 'success' | 'error' | 'warning'
   error?: string
 }
 
@@ -135,6 +158,7 @@ declare global {
       webdavAutoSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
       webdavStartupSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
       webdavPeriodicSync: (config: WebDAVConfig) => Promise<WebDAVSyncResult>
+      webdavResolveConflict: (config: WebDAVConfig, resolution: WebDAVSyncResolution) => Promise<WebDAVSyncResult>
       onSyncStatus: (cb: (status: SyncStatus) => void) => void
       exportBackup: () => Promise<{ success: boolean; path?: string; fileName?: string; error?: string }>
       importBackup: () => Promise<{ success: boolean; data?: AppData; error?: string }>

@@ -699,6 +699,99 @@ function getCardCount(data: any) {
   return (data?.canvases || []).reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
 }
 
+interface SyncSummary {
+  canvasCount: number
+  cardCount: number
+  labelCount: number
+  sectionCount: number
+  connectionCount: number
+  totalEntityCount: number
+}
+
+type SyncResolution = 'keep-local' | 'use-remote'
+
+function normalizeSyncData(data: any, fallbackSyncTimestamp = 0) {
+  return {
+    ...(data && typeof data === 'object' && !Array.isArray(data) ? data : {}),
+    canvases: Array.isArray(data?.canvases) ? data.canvases : [],
+    activeCanvasId: data?.activeCanvasId ?? null,
+    _syncTimestamp: typeof data?._syncTimestamp === 'number' ? data._syncTimestamp : fallbackSyncTimestamp,
+  }
+}
+
+function summarizeSyncData(data: any): SyncSummary {
+  const normalized = normalizeSyncData(data)
+  const canvases = normalized.canvases || []
+  const cardCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
+  const labelCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.labels?.length || 0), 0)
+  const sectionCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.sections?.length || 0), 0)
+  const connectionCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.connections?.length || 0), 0)
+  return {
+    canvasCount: canvases.length,
+    cardCount,
+    labelCount,
+    sectionCount,
+    connectionCount,
+    totalEntityCount: cardCount + labelCount + sectionCount + connectionCount,
+  }
+}
+
+function hasMeaningfulSyncData(summary: SyncSummary) {
+  return summary.totalEntityCount > 0 || summary.canvasCount > 1
+}
+
+function getComparableSyncSnapshot(data: any) {
+  const normalized = normalizeSyncData(data)
+  return JSON.stringify({
+    canvases: normalized.canvases,
+    activeCanvasId: normalized.activeCanvasId,
+  })
+}
+
+function formatSyncSummary(summary: SyncSummary) {
+  return `${summary.canvasCount} 个画布、${summary.cardCount} 张卡片、${summary.labelCount} 个标题、${summary.sectionCount} 个分区、${summary.connectionCount} 条连线`
+}
+
+function isHighRiskRemoteOverwrite(localSummary: SyncSummary, remoteSummary: SyncSummary) {
+  if (!hasMeaningfulSyncData(localSummary)) return false
+  if (!hasMeaningfulSyncData(remoteSummary)) return true
+  if (localSummary.cardCount >= 10 && remoteSummary.cardCount === 0) return true
+
+  const entityLoss = localSummary.totalEntityCount - remoteSummary.totalEntityCount
+  return entityLoss >= 20 && remoteSummary.totalEntityCount <= Math.floor(localSummary.totalEntityCount * 0.7)
+}
+
+function buildSyncDecision(
+  localData: any,
+  remoteData: any,
+  reason: 'remote-newer' | 'diverged' | 'destructive-remote',
+) {
+  const normalizedLocal = normalizeSyncData(localData)
+  const normalizedRemote = normalizeSyncData(remoteData)
+  const localSummary = summarizeSyncData(normalizedLocal)
+  const remoteSummary = summarizeSyncData(normalizedRemote)
+  const highRisk = reason === 'destructive-remote' || isHighRiskRemoteOverwrite(localSummary, remoteSummary)
+
+  let message = `检测到云端与本地数据不同步，当前仍会优先保留本地显示。请确认是保留本地上传，还是使用云端覆盖本地。`
+  if (reason === 'remote-newer' && !highRisk) {
+    message = `检测到云端有更新，本地仍会优先显示。请确认是否使用云端数据更新本地内容。`
+  }
+  if (highRisk) {
+    message = `云端数据会把本地数据从 ${formatSyncSummary(localSummary)} 变成 ${formatSyncSummary(remoteSummary)}。这是高危操作，请确认是否继续使用云端数据覆盖本地。`
+  }
+
+  return {
+    reason: highRisk ? 'destructive-remote' : reason,
+    risk: highRisk ? 'high' as const : 'low' as const,
+    message,
+    preferredResolution: 'keep-local' as const,
+    localSummary,
+    remoteSummary,
+    localTimestamp: normalizedLocal._syncTimestamp || 0,
+    remoteTimestamp: normalizedRemote._syncTimestamp || 0,
+  }
+}
+
 function getLocalFileModifiedAt(file: string) {
   try {
     if (!fs.existsSync(file)) return 0
@@ -724,7 +817,7 @@ function hasMissingLocalImages(data: any) {
 
 async function uploadLocalSnapshot(client: any, file: string) {
   const raw = fs.readFileSync(file, 'utf-8')
-  const data = JSON.parse(raw)
+  const data = normalizeSyncData(JSON.parse(raw), Date.now())
   data._syncTimestamp = Date.now()
 
   await ensureRemoteDir(client)
@@ -736,83 +829,149 @@ async function uploadLocalSnapshot(client: any, file: string) {
   return data
 }
 
+async function loadRemoteSnapshot(client: any) {
+  if (!await client.exists(WEBDAV_REMOTE_FILE)) return null
+  const remoteRaw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
+  return normalizeSyncData(JSON.parse(remoteRaw as string))
+}
+
+async function applyRemoteSnapshot(client: any, file: string, remoteData: any) {
+  const normalized = normalizeSyncData(remoteData, Date.now())
+  createBackup()
+  fs.writeFileSync(file, JSON.stringify(normalized, null, 2), 'utf-8')
+  markLocalSnapshotSynced(file, normalized._syncTimestamp)
+  await downloadRemoteImages(client)
+  return normalized
+}
+
 async function reconcileWebDAVState(config: { server: string; username: string; password: string }) {
   const { dataFile: file } = getDataPaths()
   ensureDataDir()
-
-  const client = await getWebDAVClient(config)
-  if (!await client.exists(WEBDAV_REMOTE_FILE)) {
-    if (fs.existsSync(file)) {
-      await uploadLocalSnapshot(client, file)
-      return { success: true, action: 'uploaded' as const }
-    }
-    return { success: true, action: 'up-to-date' as const }
-  }
-
-  const remoteRaw = await client.getFileContents(WEBDAV_REMOTE_FILE, { format: 'text' })
-  const remoteData = JSON.parse(remoteRaw as string)
-  const remoteTs = remoteData._syncTimestamp || 0
 
   let localData: any = null
   let localTs = 0
   const hasLocalFile = fs.existsSync(file)
   if (hasLocalFile) {
     try {
-      localData = JSON.parse(fs.readFileSync(file, 'utf-8'))
+      localData = normalizeSyncData(JSON.parse(fs.readFileSync(file, 'utf-8')))
       localTs = localData._syncTimestamp || 0
     } catch {}
   }
 
+  const localSummary = summarizeSyncData(localData)
+  const localFingerprint = localData ? getComparableSyncSnapshot(localData) : ''
   const localModifiedAt = getLocalFileModifiedAt(file)
   const localDirty = !!localData && localModifiedAt > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS
+
+  const client = await getWebDAVClient(config)
+  const remoteData = await loadRemoteSnapshot(client)
+  if (!remoteData) {
+    if (hasLocalFile && localData && hasMeaningfulSyncData(localSummary)) {
+      await uploadLocalSnapshot(client, file)
+      return { success: true, action: 'uploaded' as const }
+    }
+    return { success: true, action: 'up-to-date' as const }
+  }
+
+  const remoteTs = remoteData._syncTimestamp || 0
+  const remoteSummary = summarizeSyncData(remoteData)
+  const remoteFingerprint = getComparableSyncSnapshot(remoteData)
   const localMissingImagesDownloaded = localData
     ? await downloadMissingRemoteImagesForData(client, localData)
     : 0
 
-  if (remoteTs > localTs) {
-    // Prefer the newer side: keep local unsynced edits only when they happened after the remote snapshot.
-    if (localDirty && localModifiedAt + LOCAL_SYNC_DIRTY_TOLERANCE_MS >= remoteTs) {
-      await uploadLocalSnapshot(client, file)
-      return { success: true, action: 'uploaded' as const }
+  if (!localData) {
+    if (hasMeaningfulSyncData(remoteSummary)) {
+      const appliedRemote = await applyRemoteSnapshot(client, file, remoteData)
+      return { success: true, action: 'downloaded' as const, data: appliedRemote }
     }
-    createBackup()
-    fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
-    markLocalSnapshotSynced(file, remoteTs)
-    await downloadRemoteImages(client)
-    return { success: true, action: 'downloaded' as const, data: remoteData }
+    return { success: true, action: 'up-to-date' as const }
   }
 
-  if ((localDirty || localTs > remoteTs) && hasLocalFile) {
+  if (localFingerprint === remoteFingerprint) {
+    if (localMissingImagesDownloaded > 0) {
+      return { success: true, action: 'downloaded' as const, data: localData }
+    }
+    return { success: true, action: 'up-to-date' as const }
+  }
+
+  if (localDirty) {
+    if (remoteTs > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS) {
+      return {
+        success: true,
+        action: 'needs-confirmation' as const,
+        decision: buildSyncDecision(localData, remoteData, 'diverged'),
+      }
+    }
     await uploadLocalSnapshot(client, file)
     return { success: true, action: 'uploaded' as const }
   }
 
-  if (remoteTs === localTs && remoteTs === 0) {
-    const remoteCardCount = getCardCount(remoteData)
-    const localCardCount = getCardCount(localData)
-    if (remoteCardCount > localCardCount) {
-      createBackup()
-      fs.writeFileSync(file, JSON.stringify(remoteData, null, 2), 'utf-8')
-      markLocalSnapshotSynced(file, remoteTs)
-      await downloadRemoteImages(client)
-      return { success: true, action: 'downloaded' as const, data: remoteData }
+  if (localTs > remoteTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS && hasLocalFile) {
+    await uploadLocalSnapshot(client, file)
+    return { success: true, action: 'uploaded' as const }
+  }
+
+  if (remoteTs > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS) {
+    if (!hasMeaningfulSyncData(localSummary) && hasMeaningfulSyncData(remoteSummary)) {
+      const appliedRemote = await applyRemoteSnapshot(client, file, remoteData)
+      return { success: true, action: 'downloaded' as const, data: appliedRemote }
     }
-    if (localCardCount > remoteCardCount && hasLocalFile) {
-      await uploadLocalSnapshot(client, file)
-      return { success: true, action: 'uploaded' as const }
+    return {
+      success: true,
+      action: 'needs-confirmation' as const,
+      decision: buildSyncDecision(
+        localData,
+        remoteData,
+        isHighRiskRemoteOverwrite(localSummary, remoteSummary) ? 'destructive-remote' : 'remote-newer',
+      ),
     }
   }
 
-  if (hasMissingLocalImages(remoteData)) {
-    await downloadMissingRemoteImagesForData(client, remoteData)
-    return { success: true, action: 'downloaded' as const, data: remoteData }
+  if (!hasMeaningfulSyncData(localSummary) && hasMeaningfulSyncData(remoteSummary)) {
+    const appliedRemote = await applyRemoteSnapshot(client, file, remoteData)
+    return { success: true, action: 'downloaded' as const, data: appliedRemote }
   }
 
-  if (localMissingImagesDownloaded > 0) {
-    return { success: true, action: 'downloaded' as const, data: localData }
+  if (hasMeaningfulSyncData(localSummary) && !hasMeaningfulSyncData(remoteSummary) && hasLocalFile) {
+    await uploadLocalSnapshot(client, file)
+    return { success: true, action: 'uploaded' as const }
   }
 
-  return { success: true, action: 'up-to-date' as const }
+  return {
+    success: true,
+    action: 'needs-confirmation' as const,
+    decision: buildSyncDecision(
+      localData,
+      remoteData,
+      isHighRiskRemoteOverwrite(localSummary, remoteSummary) ? 'destructive-remote' : 'diverged',
+    ),
+  }
+}
+
+async function resolveWebDAVConflict(
+  config: { server: string; username: string; password: string },
+  resolution: SyncResolution,
+) {
+  const { dataFile: file } = getDataPaths()
+  ensureDataDir()
+  const client = await getWebDAVClient(config)
+
+  if (resolution === 'keep-local') {
+    if (!fs.existsSync(file)) {
+      return { success: false, error: '没有找到本地数据文件' }
+    }
+    const uploaded = await uploadLocalSnapshot(client, file)
+    return { success: true, action: 'uploaded' as const, data: uploaded }
+  }
+
+  const remoteData = await loadRemoteSnapshot(client)
+  if (!remoteData) {
+    return { success: false, error: '云端没有可用数据' }
+  }
+
+  const appliedRemote = await applyRemoteSnapshot(client, file, remoteData)
+  return { success: true, action: 'downloaded' as const, data: appliedRemote }
 }
 
 ipcMain.handle('webdav-test', async (_event, config: { server: string; username: string; password: string }) => {
@@ -861,6 +1020,10 @@ ipcMain.handle('webdav-auto-sync', async (_event, config: { server: string; user
   return enqueueWebDAVSync(async () => {
     try {
       const result = await reconcileWebDAVState(config)
+      if (result.action === 'needs-confirmation') {
+        mainWindow?.webContents.send('sync-status', { status: 'warning' })
+        return result
+      }
       mainWindow?.webContents.send('sync-status', { status: 'success' })
       return result
     } catch (err) {
@@ -885,6 +1048,21 @@ ipcMain.handle('webdav-periodic-sync', async (_event, config: { server: string; 
     try {
       return await reconcileWebDAVState(config)
     } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+})
+
+ipcMain.handle('webdav-resolve-conflict', async (_event, config: { server: string; username: string; password: string }, resolution: SyncResolution) => {
+  return enqueueWebDAVSync(async () => {
+    try {
+      const result = await resolveWebDAVConflict(config, resolution)
+      if (result.success) {
+        mainWindow?.webContents.send('sync-status', { status: 'success' })
+      }
+      return result
+    } catch (err) {
+      mainWindow?.webContents.send('sync-status', { status: 'error', error: String(err) })
       return { success: false, error: String(err) }
     }
   })

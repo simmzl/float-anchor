@@ -3,7 +3,7 @@ import { useStore } from './store'
 import Sidebar from './components/Sidebar'
 import CanvasView from './components/CanvasView'
 import SettingsModal from './components/SettingsModal'
-import type { WebDAVConfig } from './types'
+import type { WebDAVConfig, WebDAVSyncResult } from './types'
 
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
@@ -14,6 +14,7 @@ export default function App() {
   const { loaded, loadData, loadSettings } = useStore()
   const showSettings = useStore((s) => s.showSettings)
   const webdavConfig = useStore((s) => s.settings.webdav)
+  const syncDecision = useStore((s) => s.syncDecision)
   const [platform, setPlatform] = useState<string>('darwin')
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const dragging = useRef(false)
@@ -41,6 +42,51 @@ export default function App() {
     document.addEventListener('mouseup', onUp)
   }, [])
 
+  const markSyncSuccess = useCallback(() => {
+    const store = useStore.getState()
+    store.setSyncStatus('success')
+    if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
+    backgroundStatusTimerRef.current = setTimeout(() => {
+      if (useStore.getState().syncStatus === 'success') {
+        useStore.getState().setSyncStatus('idle')
+      }
+    }, 3000)
+  }, [])
+
+  const applySyncResult = useCallback(async (
+    res: WebDAVSyncResult,
+    options?: { openSettingsOnDecision?: boolean },
+  ) => {
+    const store = useStore.getState()
+    if (!res.success) {
+      store.setSyncStatus('error')
+      return
+    }
+
+    if (res.action === 'needs-confirmation' && res.decision) {
+      store.setSyncDecision(res.decision)
+      store.setSyncStatus('warning')
+      if (options?.openSettingsOnDecision) {
+        store.setShowSettings(true)
+      }
+      return
+    }
+
+    store.setSyncDecision(null)
+
+    if (res.action === 'downloaded' && res.data) {
+      await store.loadData()
+      store.refreshImageCache()
+    }
+
+    if (res.action === 'uploaded' || res.action === 'downloaded') {
+      markSyncSuccess()
+      return
+    }
+
+    store.setSyncStatus('idle')
+  }, [markSyncSuccess])
+
   useEffect(() => {
     let disposed = false
 
@@ -60,29 +106,7 @@ export default function App() {
         const res = await window.electronAPI.webdavStartupSync(settings.webdav)
         if (disposed) return
 
-        if (!res.success) {
-          useStore.getState().setSyncStatus('error')
-          return
-        }
-
-        if (res.action === 'downloaded' && res.data) {
-          await useStore.getState().loadData()
-          if (disposed) return
-          useStore.getState().refreshImageCache()
-        }
-
-        if (res.action === 'uploaded' || res.action === 'downloaded') {
-          useStore.getState().setSyncStatus('success')
-          if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
-          backgroundStatusTimerRef.current = setTimeout(() => {
-            if (useStore.getState().syncStatus === 'success') {
-              useStore.getState().setSyncStatus('idle')
-            }
-          }, 3000)
-          return
-        }
-
-        useStore.getState().setSyncStatus('idle')
+        await applySyncResult(res, { openSettingsOnDecision: true })
       } catch {
         if (!disposed) useStore.getState().setSyncStatus('error')
       }
@@ -94,45 +118,29 @@ export default function App() {
     return () => {
       disposed = true
     }
-  }, [loadData, loadSettings])
+  }, [applySyncResult, loadData, loadSettings])
 
   const runBackgroundSync = useCallback(async (config: WebDAVConfig) => {
     if (backgroundSyncingRef.current) return
+    if (useStore.getState().syncDecision) return
     backgroundSyncingRef.current = true
     try {
       const res = await window.electronAPI.webdavPeriodicSync(config)
-      const store = useStore.getState()
-      if (res.success && res.action === 'downloaded' && res.data) {
-        await store.loadData()
-        store.refreshImageCache()
-      }
-      if (!res.success) {
-        store.setSyncStatus('error')
-        return
-      }
-      if (res.action === 'uploaded' || res.action === 'downloaded') {
-        store.setSyncStatus('success')
-        if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
-        backgroundStatusTimerRef.current = setTimeout(() => {
-          if (useStore.getState().syncStatus === 'success') {
-            useStore.getState().setSyncStatus('idle')
-          }
-        }, 3000)
-      }
+      await applySyncResult(res, { openSettingsOnDecision: true })
     } catch {
       useStore.getState().setSyncStatus('error')
     } finally {
       backgroundSyncingRef.current = false
     }
-  }, [])
+  }, [applySyncResult])
 
   useEffect(() => {
-    if (!webdavConfig?.server) return
+    if (!webdavConfig?.server || syncDecision) return
     const timer = window.setInterval(() => {
       void runBackgroundSync(webdavConfig)
     }, BACKGROUND_SYNC_INTERVAL_MS)
     return () => window.clearInterval(timer)
-  }, [runBackgroundSync, webdavConfig?.server, webdavConfig?.username, webdavConfig?.password])
+  }, [runBackgroundSync, syncDecision, webdavConfig?.server, webdavConfig?.username, webdavConfig?.password])
 
   useEffect(() => {
     return () => {

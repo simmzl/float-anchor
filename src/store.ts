@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
-import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig } from './types'
+import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision } from './types'
 
 interface AppState {
   canvases: Canvas[]
@@ -10,7 +10,8 @@ interface AppState {
   highlightCardId: string | null
   loaded: boolean
   settings: AppSettings
-  syncStatus: 'idle' | 'syncing' | 'success' | 'error'
+  syncStatus: 'idle' | 'syncing' | 'success' | 'error' | 'warning'
+  syncDecision: WebDAVSyncDecision | null
   imageCacheVersion: number
   showSettings: boolean
 
@@ -21,7 +22,8 @@ interface AppState {
   setTheme: (theme: 'light' | 'dark') => void
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
   setShowSettings: (v: boolean) => void
-  setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error') => void
+  setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error' | 'warning') => void
+  setSyncDecision: (decision: WebDAVSyncDecision | null) => void
   refreshImageCache: () => void
 
   addCanvas: (name: string) => void
@@ -71,6 +73,7 @@ export const useStore = create<AppState>((set, get) => ({
   loaded: false,
   settings: { theme: 'light' },
   syncStatus: 'idle',
+  syncDecision: null,
   imageCacheVersion: 0,
   showSettings: false,
 
@@ -112,20 +115,38 @@ export const useStore = create<AppState>((set, get) => ({
   persist: () => {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      const { canvases, activeCanvasId, settings } = get()
+      const { canvases, activeCanvasId, settings, syncDecision } = get()
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
-        if (settings.webdav?.server) {
+        if (settings.webdav?.server && !syncDecision) {
           clearTimeout(syncTimer)
           syncTimer = setTimeout(() => {
             set({ syncStatus: 'syncing' })
             window.electronAPI.webdavAutoSync(settings.webdav!).then(async (res) => {
+              if (!res.success) {
+                set({ syncStatus: 'error' })
+                return
+              }
+              if (res.action === 'needs-confirmation' && res.decision) {
+                set({
+                  syncStatus: 'warning',
+                  syncDecision: res.decision,
+                  showSettings: true,
+                })
+                return
+              }
               if (res.success && res.action === 'downloaded' && res.data) {
                 await get().loadData()
                 get().refreshImageCache()
               }
-              set({ syncStatus: res.success ? 'success' : 'error' })
-              if (res.success) setTimeout(() => set({ syncStatus: 'idle' }), 3000)
+              if (res.action === 'uploaded' || res.action === 'downloaded') {
+                set({ syncStatus: 'success', syncDecision: null })
+                setTimeout(() => {
+                  if (get().syncStatus === 'success') set({ syncStatus: 'idle' })
+                }, 3000)
+                return
+              }
+              set({ syncStatus: 'idle', syncDecision: null })
             }).catch(() => set({ syncStatus: 'error' }))
           }, LOCAL_WEBDAV_SYNC_DELAY_MS)
         }
@@ -162,6 +183,8 @@ export const useStore = create<AppState>((set, get) => ({
   setShowSettings: (v) => set({ showSettings: v }),
 
   setSyncStatus: (s) => set({ syncStatus: s }),
+
+  setSyncDecision: (decision) => set({ syncDecision: decision }),
 
   refreshImageCache: () => set((s) => ({ imageCacheVersion: s.imageCacheVersion + 1 })),
 
