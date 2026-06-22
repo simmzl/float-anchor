@@ -6,7 +6,7 @@ import TextBoxComponent from './TextBox'
 import SectionBox from './SectionBox'
 import ContextMenu from './ContextMenu'
 import MoveToModal from './MoveToModal'
-import type { Card, Connection, Section, CanvasLabel } from '../types'
+import type { Card, Connection, Section, CanvasLabel, TextBox } from '../types'
 import type { MenuItem } from './ContextMenu'
 
 const MIN_SCALE = 0.15
@@ -48,6 +48,7 @@ function computeSelection(
   cards: Card[],
   labels: CanvasLabel[],
   sections: Section[],
+  texts: TextBox[],
 ): SelectionSet {
   const sel = emptySelection()
 
@@ -62,6 +63,13 @@ function computeSelection(
     const lh = 40
     if (rectsIntersect(selRect.x, selRect.y, selRect.w, selRect.h, label.x, label.y, label.width, lh)) {
       sel.labelIds.add(label.id)
+    }
+  }
+
+  for (const t of texts) {
+    const th = t.height ?? 24
+    if (rectsIntersect(selRect.x, selRect.y, selRect.w, selRect.h, t.x, t.y, t.width, th)) {
+      sel.textIds.add(t.id)
     }
   }
 
@@ -362,7 +370,8 @@ export default function CanvasView() {
         const curCards = canvas?.cards ?? []
         const curLabels = canvas?.labels ?? []
         const curSections = canvas?.sections ?? []
-        const sel = computeSelection(lassoRectRef.current, curCards, curLabels, curSections)
+        const curTexts = canvas?.texts ?? []
+        const sel = computeSelection(lassoRectRef.current, curCards, curLabels, curSections, curTexts)
         setSelection(sel)
       }
       lassoStart.current = null
@@ -433,6 +442,15 @@ export default function CanvasView() {
             }
           }
         }
+        if (!hitSelected) {
+          for (const tid of selection.textIds) {
+            const t = texts.find((tx) => tx.id === tid)
+            if (t && coords.x >= t.x && coords.x <= t.x + t.width &&
+                coords.y >= t.y && coords.y <= t.y + (t.height ?? 24)) {
+              hitSelected = true; break
+            }
+          }
+        }
 
         if (hitSelected) {
           e.preventDefault()
@@ -445,7 +463,7 @@ export default function CanvasView() {
         setSelection(emptySelection())
       }
 
-      if (target.closest('.note-card') || target.closest('.canvas-label') || target.closest('.section-header') ||
+      if (target.closest('.note-card') || target.closest('.canvas-label') || target.closest('.canvas-text') || target.closest('.section-header') ||
           target.closest('.section-resize-handle') || target.closest('.card-resize-handle') ||
           target.closest('.conn-delete-btn') || target.closest('.canvas-toolbar')) return
 
@@ -454,7 +472,7 @@ export default function CanvasView() {
       isLassoing.current = false
       startLassoListeners()
     }
-  }, [connectingFrom, addConnection, selection, cards, labels, sections, toCanvasCoords, startLassoListeners])
+  }, [connectingFrom, addConnection, selection, cards, labels, sections, texts, toCanvasCoords, startLassoListeners])
 
   useEffect(() => {
     if (!isPanDragging) return
@@ -496,6 +514,7 @@ export default function CanvasView() {
     const origCards = new Map<string, { x: number; y: number }>()
     const origLabels = new Map<string, { x: number; y: number }>()
     const origSections = new Map<string, { x: number; y: number }>()
+    const origTexts = new Map<string, { x: number; y: number }>()
     if (canvas0) {
       for (const c of canvas0.cards) {
         if (selection.cardIds.has(c.id)) origCards.set(c.id, { x: c.x, y: c.y })
@@ -505,6 +524,9 @@ export default function CanvasView() {
       }
       for (const sec of canvas0.sections ?? []) {
         if (selection.sectionIds.has(sec.id)) origSections.set(sec.id, { x: sec.x, y: sec.y })
+      }
+      for (const t of canvas0.texts ?? []) {
+        if (selection.textIds.has(t.id)) origTexts.set(t.id, { x: t.x, y: t.y })
       }
     }
 
@@ -528,10 +550,14 @@ export default function CanvasView() {
             const orig = origSections.get(sec.id)
             return orig ? { ...sec, x: orig.x + totalDx, y: orig.y + totalDy } : sec
           })
+          const updatedTexts = (canvas.texts ?? []).map((t) => {
+            const orig = origTexts.get(t.id)
+            return orig ? { ...t, x: orig.x + totalDx, y: orig.y + totalDy } : t
+          })
           useStore.setState({
             canvases: store.canvases.map((c) =>
               c.id === store.activeCanvasId
-                ? { ...c, labels: updatedLabels, sections: updatedSections }
+                ? { ...c, labels: updatedLabels, sections: updatedSections, texts: updatedTexts }
                 : c,
             ),
           })
@@ -593,11 +619,15 @@ export default function CanvasView() {
           const orig = origSections.get(sec.id)
           return orig ? { ...sec, x: orig.x + finalDx, y: orig.y + finalDy } : sec
         })
+        const updatedTexts = (canvas.texts ?? []).map((t) => {
+          const orig = origTexts.get(t.id)
+          return orig ? { ...t, x: orig.x + finalDx, y: orig.y + finalDy } : t
+        })
 
         useStore.setState({
           canvases: store.canvases.map((c) =>
             c.id === store.activeCanvasId
-              ? { ...c, cards: updatedCards, labels: updatedLabels, sections: updatedSections }
+              ? { ...c, cards: updatedCards, labels: updatedLabels, sections: updatedSections, texts: updatedTexts }
               : c,
           ),
         })
