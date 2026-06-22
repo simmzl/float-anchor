@@ -1389,6 +1389,102 @@ input {
   background: rgba(229, 92, 92, 0.1);
 }
 
+/* ===== Canvas Text Box ===== */
+.canvas-text {
+  position: absolute;
+  cursor: grab;
+  user-select: none;
+  padding: 4px 6px;
+  z-index: 5;
+}
+
+.canvas-text.dragging {
+  opacity: 0.8;
+  cursor: grabbing;
+  z-index: 100;
+}
+
+.canvas-text.multi-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.text-content {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1em;
+}
+
+.text-content.placeholder {
+  color: var(--text-muted);
+}
+
+.text-edit-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  display: block;
+}
+
+.text-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  opacity: 0;
+}
+
+.canvas-text:hover .text-resize-handle {
+  opacity: 1;
+}
+
+.text-actions {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  display: flex;
+  gap: 2px;
+}
+
+.text-action-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.12s;
+}
+
+.text-action-btn:hover {
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+.text-action-btn.danger:hover {
+  color: var(--danger);
+  background: rgba(229, 92, 92, 0.1);
+}
+
 /* ===== Context Menu ===== */
 .context-menu {
   position: fixed;
