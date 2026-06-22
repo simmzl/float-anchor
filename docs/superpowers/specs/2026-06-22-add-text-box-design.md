@@ -110,7 +110,8 @@ export function useActiveTexts() {
   - `onBlur` / 点击外部 = 提交（`updateText`，文本可为空——空文本框允许存在还是自动删除见 §7 边界）。
 - **进入编辑**：双击；或 hover 出现的"编辑"按钮。组件读取全局 `editingTextId === text.id` 判断是否处于编辑态（使新建后自动聚焦生效）。
 - **拖动移动**：复用 CanvasLabel 的 `handleDragStart` 模式（按下非编辑态且未被多选时，按 `scale` 换算位移调用 `moveText`）。被多选时不自己处理拖动，交给 CanvasView 的群组拖动（与 label 一致：`if (selected) return`）。
-- **宽度调整**：**右边缘竖直手柄**（仅调宽度，因为高度自适应），hover 显示；拖拽时按 `scale` 换算更新 `width`（最小宽度约 80px）。
+- **宽度调整**：**右边缘竖直手柄**（仅调宽度，因为高度自适应）；拖拽时按 `scale` 换算更新 `width`（最小宽度约 80px）。
+  - 可见性（2026-06-22 验证后修订）：静止时整体仍透明只有文字；**hover 或被框选选中时**才浮现一圈淡轮廓边框 + 右边缘可见的缩放手柄（accent 色竖直小药丸）。早期实现手柄为无背景透明 div、完全不可见导致"找不到地方拖"，此次改为可见抓手。纯 CSS 调整，不改数据模型与逻辑。
 - **高度回写**：用 `ResizeObserver` 观察渲染容器实际高度，与 `text.height` 不同（容差 1px）时 `updateText(id, { height })`。保证 §6 的框选/命中几何精确。
 - **hover 操作**：编辑、删除两个小按钮（镜像 label）。
 
