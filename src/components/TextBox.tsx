@@ -22,15 +22,17 @@ const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, sel
   const containerRef = useRef<HTMLDivElement>(null)
   const clickCount = useRef(0)
   const clickTimer = useRef<ReturnType<typeof setTimeout>>()
+  const committedRef = useRef(false)
 
-  const autoGrow = (el: HTMLTextAreaElement) => {
+  const autoGrow = useCallback((el: HTMLTextAreaElement) => {
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }
+  }, [])
 
   // 进入编辑态：同步内容、聚焦、光标置末、撑开高度
   useEffect(() => {
     if (isEditing) {
+      committedRef.current = false
       setEditText(text.text)
       requestAnimationFrame(() => {
         const el = textareaRef.current
@@ -40,7 +42,7 @@ const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, sel
         autoGrow(el)
       })
     }
-  }, [isEditing, text.text])
+  }, [isEditing, text.text, autoGrow])
 
   // 非编辑态测量渲染高度并回写，供框选/命中判定使用精确几何
   useEffect(() => {
@@ -60,6 +62,8 @@ const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, sel
   }, [isEditing, scale, text.id, text.height, text.text, text.width, updateText])
 
   const commitEdit = useCallback(() => {
+    if (committedRef.current) return
+    committedRef.current = true
     setEditingText(null)
     if (editText !== text.text) {
       updateText(text.id, { text: editText })
