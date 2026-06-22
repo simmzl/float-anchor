@@ -31,6 +31,16 @@ export interface Section {
   sourceId?: string
 }
 
+export interface TextBox {
+  id: string
+  text: string
+  x: number
+  y: number
+  width: number
+  height?: number
+  sourceId?: string
+}
+
 export interface Connection {
   id: string
   fromCardId: string
@@ -50,6 +60,7 @@ export interface Canvas {
   labels?: CanvasLabel[]
   sections?: Section[]
   connections?: Connection[]
+  texts?: TextBox[]
   viewport?: CanvasViewport
 }
 

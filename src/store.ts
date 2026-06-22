@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
-import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision } from './types'
+import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox } from './types'
 
 interface AppState {
   canvases: Canvas[]
   activeCanvasId: string | null
   editingCardId: string | null
+  editingTextId: string | null
   highlightCardId: string | null
   loaded: boolean
   settings: AppSettings
@@ -38,6 +39,11 @@ interface AppState {
   setEditingCard: (cardId: string | null) => void
   moveCardToCanvas: (cardId: string, targetCanvasId: string) => void
   setHighlightCard: (cardId: string | null) => void
+  addText: (x: number, y: number) => void
+  updateText: (textId: string, patch: Partial<TextBox>) => void
+  deleteText: (textId: string) => void
+  moveText: (textId: string, x: number, y: number) => void
+  setEditingText: (textId: string | null) => void
 
   addLabel: (x: number, y: number) => void
   updateLabel: (labelId: string, patch: Partial<CanvasLabel>) => void
@@ -69,6 +75,7 @@ export const useStore = create<AppState>((set, get) => ({
   canvases: [],
   activeCanvasId: null,
   editingCardId: null,
+  editingTextId: null,
   highlightCardId: null,
   loaded: false,
   settings: { theme: 'light' },
@@ -532,6 +539,63 @@ export const useStore = create<AppState>((set, get) => ({
 
   setHighlightCard: (cardId) => set({ highlightCardId: cardId }),
 
+  addText: (x, y) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    const text: TextBox = { id: uuid(), text: '', x, y, width: 300 }
+    set((s) => ({
+      canvases: s.canvases.map((c) =>
+        c.id === activeCanvasId
+          ? { ...c, texts: [...(c.texts ?? []), text] }
+          : c,
+      ),
+      editingTextId: text.id,
+    }))
+    get().persist()
+  },
+
+  updateText: (textId, patch) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    set((s) => ({
+      canvases: s.canvases.map((c) =>
+        c.id === activeCanvasId
+          ? { ...c, texts: (c.texts ?? []).map((t) => t.id === textId ? { ...t, ...patch } : t) }
+          : c,
+      ),
+    }))
+    get().persist()
+  },
+
+  deleteText: (textId) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    set((s) => ({
+      canvases: s.canvases.map((c) =>
+        c.id === activeCanvasId
+          ? { ...c, texts: (c.texts ?? []).filter((t) => t.id !== textId) }
+          : c,
+      ),
+      editingTextId: s.editingTextId === textId ? null : s.editingTextId,
+    }))
+    get().persist()
+  },
+
+  moveText: (textId, x, y) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    set((s) => ({
+      canvases: s.canvases.map((c) =>
+        c.id === activeCanvasId
+          ? { ...c, texts: (c.texts ?? []).map((t) => t.id === textId ? { ...t, x, y } : t) }
+          : c,
+      ),
+    }))
+    get().persist()
+  },
+
+  setEditingText: (textId) => set({ editingTextId: textId }),
+
   addLabel: (x, y) => {
     const { activeCanvasId } = get()
     if (!activeCanvasId) return
@@ -949,6 +1013,16 @@ export function useActiveLabels() {
     (s) => {
       const c = s.canvases.find((c) => c.id === s.activeCanvasId)
       return c?.labels ?? []
+    },
+    (a, b) => a === b,
+  )
+}
+
+export function useActiveTexts() {
+  return useStore(
+    (s) => {
+      const c = s.canvases.find((c) => c.id === s.activeCanvasId)
+      return c?.texts ?? []
     },
     (a, b) => a === b,
   )
