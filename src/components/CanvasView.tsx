@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
-import { useStore, useActiveCanvasMeta, useActiveCards, useActiveConnections, useActiveLabels, useActiveSections, useHighlightCard, useSettings } from '../store'
+import { useStore, useActiveCanvasMeta, useActiveCards, useActiveConnections, useActiveLabels, useActiveSections, useHighlightCard, useSettings, useActiveTexts } from '../store'
 import NoteCard from './NoteCard'
 import CanvasLabelComponent from './CanvasLabel'
+import TextBoxComponent from './TextBox'
 import SectionBox from './SectionBox'
 import ContextMenu from './ContextMenu'
 import MoveToModal from './MoveToModal'
@@ -17,14 +18,15 @@ interface SelectionSet {
   cardIds: Set<string>
   labelIds: Set<string>
   sectionIds: Set<string>
+  textIds: Set<string>
 }
 
 function emptySelection(): SelectionSet {
-  return { cardIds: new Set(), labelIds: new Set(), sectionIds: new Set() }
+  return { cardIds: new Set(), labelIds: new Set(), sectionIds: new Set(), textIds: new Set() }
 }
 
 function selectionEmpty(sel: SelectionSet): boolean {
-  return sel.cardIds.size === 0 && sel.labelIds.size === 0 && sel.sectionIds.size === 0
+  return sel.cardIds.size === 0 && sel.labelIds.size === 0 && sel.sectionIds.size === 0 && sel.textIds.size === 0
 }
 
 function rectsIntersect(
@@ -133,6 +135,7 @@ export default function CanvasView() {
   const addConnection = useStore((s) => s.addConnection)
   const deleteConnection = useStore((s) => s.deleteConnection)
   const addLabel = useStore((s) => s.addLabel)
+  const addText = useStore((s) => s.addText)
   const addSection = useStore((s) => s.addSection)
   const compactSection = useStore((s) => s.compactSection)
   const highlightCardId = useHighlightCard()
@@ -142,6 +145,7 @@ export default function CanvasView() {
   const cards = useActiveCards()
   const connections = useActiveConnections()
   const labels = useActiveLabels()
+  const texts = useActiveTexts()
   const sections = useActiveSections()
   const settings = useSettings()
   const arrowColor = settings.theme === 'dark' ? '#888' : '#bbb'
@@ -760,6 +764,11 @@ export default function CanvasView() {
               onClick: () => addLabel(coords.x, coords.y),
             },
             {
+              label: '创建文本',
+              icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="14" y2="17" /></svg>,
+              onClick: () => addText(coords.x, coords.y),
+            },
+            {
               label: '创建分区',
               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 2" /></svg>,
               onClick: () => addSection(coords.x, coords.y),
@@ -768,7 +777,7 @@ export default function CanvasView() {
         })
       }
     }
-  }, [cards, sections, addCard, addLabel, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection])
+  }, [cards, sections, addCard, addLabel, addText, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -951,6 +960,10 @@ export default function CanvasView() {
 
           {labels.map((label) => (
             <CanvasLabelComponent key={label.id} label={label} scale={scaleVal.current} selected={selection.labelIds.has(label.id)} />
+          ))}
+
+          {texts.map((t) => (
+            <TextBoxComponent key={t.id} text={t} scale={scaleVal.current} selected={selection.textIds.has(t.id)} />
           ))}
 
           <svg className="connections-layer">
