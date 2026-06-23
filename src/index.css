@@ -2441,3 +2441,42 @@ input {
   border-radius: 3px;
   padding: 1px 3px;
 }
+
+/* ===== Confirm Modal ===== */
+.confirm-message {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.12s;
+}
+
+.confirm-btn:hover {
+  background: var(--accent-light);
+}
+
+.confirm-btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.confirm-btn.danger:hover {
+  opacity: 0.9;
+}
