@@ -76,8 +76,10 @@ byX = units 按 x 升序
 columns = []                       // 每列是 unit[]
 for r in byX:
   cx = r.x + r.w/2
-  找一个已存在列 col 使 |cx - (col[0].x + col[0].w/2)| < max(r.w, col[0].w) * 0.6
+  令 colCx = 列内已入元素中心 x 的均值，colW = 列内已入元素宽度的均值
+  找一个已存在列 col 使 |cx - colCx| < max(r.w, colW) * 0.6
   命中则 col.push(r)，否则新建列 [r]
+  （注：用列内动态均值而非列首 col[0]，混宽度选择时归列更稳；与 compactSection 的 col[0] 写法有意不同）
 for col in columns: col 按 y 升序
 columns 按各列平均 x 升序
 
