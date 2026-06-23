@@ -84,6 +84,48 @@ function computeSelection(
   return sel
 }
 
+function pointInSelection(
+  coords: { x: number; y: number },
+  sel: SelectionSet,
+  cards: Card[],
+  labels: CanvasLabel[],
+  sections: Section[],
+  texts: TextBox[],
+): boolean {
+  for (const id of sel.cardIds) {
+    const c = cards.find((x) => x.id === id)
+    if (c && coords.x >= c.x && coords.x <= c.x + c.width &&
+        coords.y >= c.y && coords.y <= c.y + (c.height ?? 200)) return true
+  }
+  for (const id of sel.labelIds) {
+    const l = labels.find((x) => x.id === id)
+    if (l && coords.x >= l.x && coords.x <= l.x + l.width &&
+        coords.y >= l.y && coords.y <= l.y + 40) return true
+  }
+  for (const id of sel.sectionIds) {
+    const s = sections.find((x) => x.id === id)
+    if (s && coords.x >= s.x && coords.x <= s.x + s.width &&
+        coords.y >= s.y && coords.y <= s.y + s.height) return true
+  }
+  for (const id of sel.textIds) {
+    const t = texts.find((x) => x.id === id)
+    if (t && coords.x >= t.x && coords.x <= t.x + t.width &&
+        coords.y >= t.y && coords.y <= t.y + (t.height ?? 24)) return true
+  }
+  return false
+}
+
+function arrangeableUnitCount(sel: SelectionSet, sections: Section[]): number {
+  const memberOfSelected = new Set<string>()
+  for (const sid of sel.sectionIds) {
+    const s = sections.find((x) => x.id === sid)
+    for (const cid of (s?.cardIds ?? [])) memberOfSelected.add(cid)
+  }
+  let cards = 0
+  for (const cid of sel.cardIds) if (!memberOfSelected.has(cid)) cards++
+  return sel.textIds.size + sel.labelIds.size + sel.sectionIds.size + cards
+}
+
 function findDensestCenter(cards: Card[]): { cx: number; cy: number; clusterCards: Card[] } | null {
   if (cards.length === 0) return null
   if (cards.length <= 3) {
@@ -144,6 +186,7 @@ export default function CanvasView() {
   const deleteConnection = useStore((s) => s.deleteConnection)
   const addLabel = useStore((s) => s.addLabel)
   const addText = useStore((s) => s.addText)
+  const arrangeUnits = useStore((s) => s.arrangeUnits)
   const addSection = useStore((s) => s.addSection)
   const compactSection = useStore((s) => s.compactSection)
   const highlightCardId = useHighlightCard()
@@ -415,42 +458,7 @@ export default function CanvasView() {
 
       if (!selectionEmpty(selection)) {
         const coords = toCanvasCoords(e.clientX, e.clientY)
-        let hitSelected = false
-
-        for (const cid of selection.cardIds) {
-          const c = cards.find((cd) => cd.id === cid)
-          if (c && coords.x >= c.x && coords.x <= c.x + c.width &&
-              coords.y >= c.y && coords.y <= c.y + (c.height ?? 200)) {
-            hitSelected = true; break
-          }
-        }
-        if (!hitSelected) {
-          for (const lid of selection.labelIds) {
-            const l = labels.find((lb) => lb.id === lid)
-            if (l && coords.x >= l.x && coords.x <= l.x + l.width &&
-                coords.y >= l.y && coords.y <= l.y + 40) {
-              hitSelected = true; break
-            }
-          }
-        }
-        if (!hitSelected) {
-          for (const sid of selection.sectionIds) {
-            const sec = sections.find((s) => s.id === sid)
-            if (sec && coords.x >= sec.x && coords.x <= sec.x + sec.width &&
-                coords.y >= sec.y && coords.y <= sec.y + sec.height) {
-              hitSelected = true; break
-            }
-          }
-        }
-        if (!hitSelected) {
-          for (const tid of selection.textIds) {
-            const t = texts.find((tx) => tx.id === tid)
-            if (t && coords.x >= t.x && coords.x <= t.x + t.width &&
-                coords.y >= t.y && coords.y <= t.y + (t.height ?? 24)) {
-              hitSelected = true; break
-            }
-          }
-        }
+        const hitSelected = pointInSelection(coords, selection, cards, labels, sections, texts)
 
         if (hitSelected) {
           e.preventDefault()
@@ -689,6 +697,28 @@ export default function CanvasView() {
       return
     }
 
+    const selCoords = toCanvasCoords(e.clientX, e.clientY)
+    if (arrangeableUnitCount(selection, sections) >= 2 &&
+        pointInSelection(selCoords, selection, cards, labels, sections, texts)) {
+      setCtxMenu({
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          {
+            label: '自动排布',
+            icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
+            onClick: () => arrangeUnits({
+              cardIds: [...selection.cardIds],
+              labelIds: [...selection.labelIds],
+              sectionIds: [...selection.sectionIds],
+              textIds: [...selection.textIds],
+            }),
+          },
+        ],
+      })
+      return
+    }
+
     const noteCard = (e.target as HTMLElement).closest('.note-card')
 
     if (noteCard) {
@@ -807,7 +837,7 @@ export default function CanvasView() {
         })
       }
     }
-  }, [cards, sections, addCard, addLabel, addText, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection])
+  }, [cards, sections, labels, texts, selection, addCard, addLabel, addText, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection, arrangeUnits])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
