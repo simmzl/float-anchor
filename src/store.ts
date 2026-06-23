@@ -57,6 +57,8 @@ interface AppState {
   autoFitSection: (sectionId: string) => void
   compactSection: (sectionId: string) => void
   arrangeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => void
+  deleteUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => void
+  nudgeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }, dx: number, dy: number) => void
 
   finalizeCardMove: (cardId: string) => void
 
@@ -1026,6 +1028,59 @@ export const useStore = create<AppState>((set, get) => ({
             const np = newPos.get(cd.id)
             return np ? { ...cd, x: np.x, y: np.y } : cd
           }),
+        }
+      }),
+    }))
+    get().persist()
+  },
+
+  deleteUnits: (ids) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    const cardIds = new Set(ids.cardIds)
+    const labelIds = new Set(ids.labelIds)
+    const sectionIds = new Set(ids.sectionIds)
+    const textIds = new Set(ids.textIds)
+    set((s) => ({
+      canvases: s.canvases.map((c) => {
+        if (c.id !== activeCanvasId) return c
+        return {
+          ...c,
+          cards: c.cards.filter((cd) => !cardIds.has(cd.id)),
+          labels: (c.labels ?? []).filter((l) => !labelIds.has(l.id)),
+          texts: (c.texts ?? []).filter((t) => !textIds.has(t.id)),
+          sections: (c.sections ?? [])
+            .filter((sec) => !sectionIds.has(sec.id))
+            .map((sec) => {
+              const members = sec.cardIds ?? []
+              const kept = members.filter((id) => !cardIds.has(id))
+              return kept.length !== members.length ? { ...sec, cardIds: kept } : sec
+            }),
+        }
+      }),
+      editingCardId: s.editingCardId && cardIds.has(s.editingCardId) ? null : s.editingCardId,
+      editingTextId: s.editingTextId && textIds.has(s.editingTextId) ? null : s.editingTextId,
+    }))
+    get().persist()
+  },
+
+  nudgeUnits: (ids, dx, dy) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    if (dx === 0 && dy === 0) return
+    const cardIds = new Set(ids.cardIds)
+    const labelIds = new Set(ids.labelIds)
+    const sectionIds = new Set(ids.sectionIds)
+    const textIds = new Set(ids.textIds)
+    set((s) => ({
+      canvases: s.canvases.map((c) => {
+        if (c.id !== activeCanvasId) return c
+        return {
+          ...c,
+          cards: c.cards.map((cd) => cardIds.has(cd.id) ? { ...cd, x: cd.x + dx, y: cd.y + dy } : cd),
+          labels: (c.labels ?? []).map((l) => labelIds.has(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l),
+          texts: (c.texts ?? []).map((t) => textIds.has(t.id) ? { ...t, x: t.x + dx, y: t.y + dy } : t),
+          sections: (c.sections ?? []).map((sec) => sectionIds.has(sec.id) ? { ...sec, x: sec.x + dx, y: sec.y + dy } : sec),
         }
       }),
     }))
