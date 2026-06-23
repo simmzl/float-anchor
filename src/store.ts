@@ -960,8 +960,9 @@ export const useStore = create<AppState>((set, get) => ({
       const cx = r.x + r.w / 2
       let placed = false
       for (const col of columns) {
-        const colCx = col[0].x + col[0].w / 2
-        if (Math.abs(cx - colCx) < Math.max(r.w, col[0].w) * 0.6) {
+        const colCx = col.reduce((s, u) => s + u.x + u.w / 2, 0) / col.length
+        const colW = col.reduce((s, u) => s + u.w, 0) / col.length
+        if (Math.abs(cx - colCx) < Math.max(r.w, colW) * 0.6) {
           col.push(r); placed = true; break
         }
       }
