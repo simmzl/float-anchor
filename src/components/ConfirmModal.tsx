@@ -18,16 +18,17 @@ export default function ConfirmModal({
   onCancel,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const onCancelRef = useRef(onCancel)
+  onCancelRef.current = onCancel
 
   useEffect(() => {
     confirmRef.current?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); onConfirm() }
-      if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+      if (e.key === 'Escape') { e.preventDefault(); onCancelRef.current() }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onConfirm, onCancel])
+  }, [])
 
   return (
     <div className="modal-overlay" onMouseDown={onCancel}>

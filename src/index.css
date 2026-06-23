@@ -2480,3 +2480,12 @@ input {
 .confirm-btn.danger:hover {
   opacity: 0.9;
 }
+
+.confirm-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.confirm-btn.danger:focus-visible {
+  outline-color: var(--danger);
+}
