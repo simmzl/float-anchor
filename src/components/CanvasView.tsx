@@ -6,6 +6,7 @@ import TextBoxComponent from './TextBox'
 import SectionBox from './SectionBox'
 import ContextMenu from './ContextMenu'
 import MoveToModal from './MoveToModal'
+import ConfirmModal from './ConfirmModal'
 import type { Card, Connection, Section, CanvasLabel, TextBox } from '../types'
 import type { MenuItem } from './ContextMenu'
 
@@ -187,6 +188,9 @@ export default function CanvasView() {
   const addLabel = useStore((s) => s.addLabel)
   const addText = useStore((s) => s.addText)
   const arrangeUnits = useStore((s) => s.arrangeUnits)
+  const deleteUnits = useStore((s) => s.deleteUnits)
+  const nudgeUnits = useStore((s) => s.nudgeUnits)
+  const setEditingText = useStore((s) => s.setEditingText)
   const addSection = useStore((s) => s.addSection)
   const compactSection = useStore((s) => s.compactSection)
   const highlightCardId = useHighlightCard()
@@ -220,6 +224,7 @@ export default function CanvasView() {
 
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const [moveModalCardId, setMoveModalCardId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] } | null>(null)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null)
   const [hoveredConn, setHoveredConn] = useState<string | null>(null)
@@ -385,6 +390,39 @@ export default function CanvasView() {
       y: (clientY - rect.top - pan.current.y) / scaleVal.current,
     }
   }, [])
+
+  const viewportCenterCanvasCoords = useCallback(() => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
+    return toCanvasCoords(rect.left + rect.width / 2, rect.top + rect.height / 2)
+  }, [toCanvasCoords])
+
+  const zoomAroundCenter = useCallback((factor: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    const s = scaleVal.current
+    const ns = Math.min(Math.max(s * factor, MIN_SCALE), MAX_SCALE)
+    const ratio = ns / s
+    pan.current = { x: Math.round(cx - (cx - pan.current.x) * ratio), y: Math.round(cy - (cy - pan.current.y) * ratio) }
+    scaleVal.current = ns
+    applyTransform()
+    scheduleCull()
+  }, [applyTransform, scheduleCull])
+
+  const resetZoomAroundCenter = useCallback(() => {
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const cx = rect.width / 2
+    const cy = rect.height / 2
+    const s = scaleVal.current
+    const ratio = 1 / s
+    pan.current = { x: Math.round(cx - (cx - pan.current.x) * ratio), y: Math.round(cy - (cy - pan.current.y) * ratio) }
+    scaleVal.current = 1
+    applyTransform()
+    scheduleCull()
+  }, [applyTransform, scheduleCull])
 
   const lassoRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
 
@@ -659,19 +697,91 @@ export default function CanvasView() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // 编辑输入上下文 / 确认弹窗打开 → 不处理全局快捷键
+      const ae = document.activeElement as HTMLElement | null
+      const typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)
+      const st = useStore.getState()
+      if (typing || st.editingCardId || st.editingTextId || confirmDelete) return
+
+      // 连线 / Esc（保留并优先）
       if (e.key === 'Escape') {
         if (connectingFrom) setConnectingFrom(null)
         if (!selectionEmpty(selection)) setSelection(emptySelection())
+        return
       }
       if (e.key === 'Backspace' && connectingFrom) {
         const last = connections[connections.length - 1]
         if (last) deleteConnection(last.id)
         setConnectingFrom(null)
+        return
+      }
+
+      const mod = e.metaKey || e.ctrlKey
+      const k = e.key.toLowerCase()
+      const canvas = st.canvases.find((c) => c.id === st.activeCanvasId)
+      if (!canvas) return
+
+      const selIds = () => ({
+        cardIds: [...selection.cardIds],
+        labelIds: [...selection.labelIds],
+        sectionIds: [...selection.sectionIds],
+        textIds: [...selection.textIds],
+      })
+
+      if (mod && e.shiftKey && k === 'a') {
+        e.preventDefault()
+        arrangeUnits(selIds())
+        return
+      }
+      if (mod && !e.shiftKey && k === 'a') {
+        e.preventDefault()
+        setSelection({
+          cardIds: new Set((canvas.cards ?? []).map((c) => c.id)),
+          labelIds: new Set((canvas.labels ?? []).map((l) => l.id)),
+          sectionIds: new Set((canvas.sections ?? []).map((s) => s.id)),
+          textIds: new Set((canvas.texts ?? []).map((t) => t.id)),
+        })
+        return
+      }
+      if (mod && (k === '=' || k === '+')) { e.preventDefault(); zoomAroundCenter(1.1); return }
+      if (mod && k === '-') { e.preventDefault(); zoomAroundCenter(1 / 1.1); return }
+      if (mod && k === '0') { e.preventDefault(); resetZoomAroundCenter(); return }
+      if (mod) return
+
+      if (k === 'c') { const p = viewportCenterCanvasCoords(); addCard(p.x - 186, p.y - 40); return }
+      if (k === 't') { const p = viewportCenterCanvasCoords(); addText(p.x - 150, p.y - 20); return }
+      if (k === 'r') { const p = viewportCenterCanvasCoords(); addSection(p.x - 300, p.y - 200); return }
+
+      if (e.key === 'Enter') {
+        const total = selection.cardIds.size + selection.labelIds.size + selection.sectionIds.size + selection.textIds.size
+        if (total === 1) {
+          const cid = [...selection.cardIds][0]
+          const tid = [...selection.textIds][0]
+          if (cid) setEditingCard(cid)
+          else if (tid) setEditingText(tid)
+        }
+        return
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !selectionEmpty(selection)) {
+        e.preventDefault()
+        setConfirmDelete(selIds())
+        return
+      }
+
+      if (!selectionEmpty(selection) &&
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault()
+        const step = e.shiftKey ? 10 : 1
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+        nudgeUnits(selIds(), dx, dy)
+        return
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [connectingFrom, connections, deleteConnection, selection])
+  }, [connectingFrom, connections, deleteConnection, selection, confirmDelete, arrangeUnits, addCard, addText, addSection, setEditingCard, setEditingText, nudgeUnits, zoomAroundCenter, resetZoomAroundCenter, viewportCenterCanvasCoords])
 
   useEffect(() => {
     if (!connectingFrom) {
@@ -1146,6 +1256,20 @@ export default function CanvasView() {
         <MoveToModal
           cardId={moveModalCardId}
           onClose={() => setMoveModalCardId(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          message={`确定删除选中的 ${confirmDelete.cardIds.length + confirmDelete.labelIds.length + confirmDelete.sectionIds.length + confirmDelete.textIds.length} 个元素吗？删除后无法恢复。`}
+          confirmText="删除"
+          danger
+          onConfirm={() => {
+            deleteUnits(confirmDelete)
+            setSelection(emptySelection())
+            setConfirmDelete(null)
+          }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </main>
