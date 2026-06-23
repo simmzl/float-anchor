@@ -32,7 +32,7 @@
 | 全选 | `Mod+A` | 选中当前画布所有 卡片/标题/分区/文本框 |
 | 取消选择 / 退出连线 | `Esc` | 现有行为，保留 |
 | 编辑选中 | `Enter` | 仅当**恰好单选一个卡片或文本框**时进入其编辑态 |
-| 删除选中 | `Delete` / `Backspace` | 删除所有选中元素（见 §6 语义）；连线模式下 `Backspace` 仍为取消连线 |
+| 删除选中 | `Delete` / `Backspace` | 弹**二次确认弹窗**，确认后删除所有选中元素（见 §6 语义）；连线模式下 `Backspace` 仍为取消连线 |
 | 自动排布选中 | `Mod+Shift+A` | 选中可排布单位 ≥2 时调用 `arrangeUnits`（复用既有功能） |
 | 微移选中 | `方向键` | 移 1px；`Shift+方向键` 移 10px |
 | 放大 / 缩小 | `Mod+=` / `Mod+-` | 以视口中心缩放（含 `Mod++` 同放大） |
@@ -41,6 +41,7 @@
 ## 3. 贯穿规则
 
 - **编辑态禁用（核心）**：进入快捷键分发前先判断"是否处于文字输入上下文"，是则**直接 return**（不拦截、让浏览器/编辑器处理）。判定 = `document.activeElement` 的 tagName 为 `INPUT`/`TEXTAREA`，或其 `isContentEditable` 为真（TipTap 富文本），或 store 的 `editingCardId`/`editingTextId` 非空。
+- **确认弹窗打开时禁用**：删除确认弹窗（§4.5）打开时（CanvasView 的 `confirmDelete` 状态非空），全局 keydown 分发也**直接 return**，把 Enter/Esc 交给弹窗自身处理。
 - **Mod 自适应**：`const mod = e.metaKey || e.ctrlKey`。
 - **必要时 `preventDefault`**：`Mod+A`（防浏览器全选）、`Mod+=/-/0`（防浏览器缩放）、方向键（防页面滚动）、`Delete/Backspace`（防 Win 上退到上一页）。单字母 C/T/R 不必。
 - **删除分区语义**：见 §6（与右键垃圾桶的"保留卡片"语义**不同**，本表 Delete 删除全部高亮选中）。
@@ -80,7 +81,7 @@ onKey(e):
         - k==='t'            → 视口中心 addText
         - k==='r'            → 视口中心 addSection
         - e.key==='Enter'    → 若恰好单选 1 个卡片/文本 → 进入编辑
-        - e.key 为 'Delete'/'Backspace' 且选区非空 → preventDefault; deleteUnits(选区); 清选区
+        - e.key 为 'Delete'/'Backspace' 且选区非空 → preventDefault; **打开删除确认弹窗**（`setConfirmDelete(选区快照)`），确认后才 deleteUnits + 清选区（见 §4.5）
         - e.key 为方向键且选区非空 → preventDefault; nudgeUnits(选区, ±step,0 / 0,±step)，step = e.shiftKey?10:1
 ```
 
@@ -101,7 +102,32 @@ onKey(e):
 ### 4.4 全选 helper
 构造完整 `SelectionSet`：当前画布所有 `cards/labels/sections/texts` 的 id 放入对应 Set，`setSelection(...)`。（分区成员卡片本就在全部 cards 里，天然包含。）
 
-> 架构取舍：键盘分发与视口 refs/选区 state 深度耦合于 CanvasView，故**就地扩展现有 keydown effect**，不抽独立 hook（抽出需透传 ~15 个 refs/回调，反而更糟）。CanvasView 已较大，但本功能与既有 keydown/viewport 逻辑同源，留在此处内聚最佳。
+### 4.5 删除确认弹窗（新组件 `src/components/ConfirmModal.tsx`）
+新建一个**可复用的轻量确认弹窗**，风格对齐现有 `SettingsModal`/`MoveToModal`（遮罩 + 居中卡片 + 取消/确认按钮）：
+
+```ts
+interface ConfirmModalProps {
+  message: string
+  confirmText?: string   // 默认 '删除'
+  cancelText?: string    // 默认 '取消'
+  danger?: boolean       // 确认按钮红色（删除场景 true）
+  onConfirm: () => void
+  onCancel: () => void
+}
+```
+- 自带 document 级 keydown：`Enter` → `onConfirm`，`Esc` → `onCancel`（与 MoveToModal 的 Esc 模式一致）。点击遮罩 = `onCancel`。挂载时聚焦确认按钮。
+- 仅渲染 UI 与回调，不含业务逻辑（删什么由调用方决定）。
+
+**CanvasView 接线**：
+- 新增 state `const [confirmDelete, setConfirmDelete] = useState<{ cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] } | null>(null)`。
+- 键盘 Delete/Backspace（选区非空、非编辑态、无弹窗）→ `setConfirmDelete({ cardIds:[...selection.cardIds], ... })`（快照当时选区）。
+- 在 JSX 渲染：`confirmDelete && <ConfirmModal message={\`确定删除选中的 ${total} 个元素吗？删除后无法恢复。\`} danger onConfirm={...} onCancel={() => setConfirmDelete(null)} />`，其中 `total = confirmDelete 四个数组长度之和`。
+- `onConfirm`：`deleteUnits(confirmDelete)` → `setSelection(emptySelection())` → `setConfirmDelete(null)`。
+- 弹窗打开期间，§3 规则让全局快捷键 early-return，由弹窗独占 Enter/Esc。
+
+> CSS 复用：`MoveToModal` 已有通用类 `.modal-overlay` / `.modal-box` / `.modal-header` / `.modal-body` / `.modal-close`，ConfirmModal 直接复用这套外壳；仅需在 `index.css` 新增**按钮行**样式（如 `.confirm-actions` 容器 + `.confirm-btn` / `.confirm-btn.danger` 取消/删除按钮）。
+
+> 架构取舍：键盘分发与视口 refs/选区 state 深度耦合于 CanvasView，故**就地扩展现有 keydown effect**，不抽独立 hook（抽出需透传 ~15 个 refs/回调，反而更糟）。CanvasView 已较大，但本功能与既有 keydown/viewport 逻辑同源，留在此处内聚最佳。`ConfirmModal` 独立成文件，单一职责、可复用。
 
 ## 5. 各快捷键行为细节
 - **C/T/R 创建**：复用 `addCard/addText/addSection`，位置为视口中心（§4.3）。`addCard/addText` 内部已置 `editingCardId/editingTextId`（自动进入编辑）；`addSection` 不进编辑（与现状一致）。
@@ -112,9 +138,9 @@ onKey(e):
 - **方向键微移**：`nudgeUnits(选区, dx, dy)`，`↑↓←→` 对应 `(0,-s)/(0,+s)/(-s,0)/(+s,0)`，`s = e.shiftKey ? 10 : 1`。
 - **缩放**：§4.3，clamp 到 `MIN_SCALE/MAX_SCALE`。
 
-## 6. ⚠️ 关键语义 + 边界（请 spec 复审重点确认）
-- **删除语义（需你确认）**：本设计 `Delete/Backspace` 删除**所有当前高亮选中**的元素——包括因框选/全选而被选中（并显示蓝色描边）的**分区内成员卡片**。即"所见高亮即所删"。这与**右键垃圾桶删单个分区时"保留内部卡片"的语义不同**（那条保留不变）。若你希望键盘删除也"删分区留卡片"，告诉我改。
-- **⚠️ 无撤销风险**：当前 app **没有撤销/重做**。键盘批量删除一旦误触即永久（与现有垃圾桶一致，但键盘更易批量）。本轮不引入撤销（属非目标）。可接受则保留；否则可选择不把 Delete 纳入键盘（其余照旧）。
+## 6. 关键语义 + 边界
+- **删除语义**：`Delete/Backspace` 删除**所有当前高亮选中**的元素——包括因框选/全选而被选中（显示蓝色描边）的**分区内成员卡片**。即"所见高亮即所删"。确认弹窗会显示"将删除 N 个元素"，N 即所有高亮项总数，用户在确认时即可看清范围、不会误删。这与**右键垃圾桶删单个分区时"保留内部卡片"的语义不同**（那条保留不变，且不加确认）。
+- **无撤销 → 用二次确认缓解**：app 无撤销/重做（本轮属非目标）。键盘删除前弹**自定义确认弹窗**（§4.5），避免误触永久丢数据。右键/垃圾桶删除维持现状不加确认（本次只管键盘删除）。
 - **创建位置**：视口中心（键盘无鼠标位置）。
 - **缩放锚点**：视口中心（非鼠标）。
 - **老数据兼容**：所有集合 `?? []`。
@@ -126,12 +152,14 @@ onKey(e):
 2. 非编辑态：`C/T/R` 在视口中心建卡片/文本/分区（卡片、文本自动进入编辑）。
 3. 编辑某卡片/文本时按 `C/T/R/Delete/方向键` → 只是正常输入字符/移动光标，**不触发**全局操作。
 4. `Mod+A` 全选；`Mod+Shift+A` 把选中整理成紧凑列；`Esc` 清选。
-5. 框选若干 → `Delete` 全部删除；`方向键`/`Shift+方向键` 以 1/10px 微移。
+5. 框选若干 → `Delete`/`Backspace` 弹确认弹窗（显示"N 个元素"），`Enter`/点确认才删除、`Esc`/取消则不删；`方向键`/`Shift+方向键` 以 1/10px 微移。弹窗打开时按其它快捷键无效（只 Enter/Esc 生效）。
 6. 单选一个卡片 → `Enter` 进入编辑。
 7. `Mod+=`/`Mod+-`/`Mod+0` 以视口中心缩放/复位，右下角缩放百分比同步。
 8. 现有框选、群组拖动、连线、Esc 行为无回归。
 
 ## 8. 受影响文件
 - `src/store.ts`：`AppState` 新增 `deleteUnits`、`nudgeUnits` 声明 + 实现。
-- `src/components/CanvasView.tsx`：扩展全局 keydown effect；新增 `viewportCenterCanvasCoords`/`zoomAroundCenter`/`resetZoomAroundCenter`/全选 helper；接入 store 的 `deleteUnits/nudgeUnits/arrangeUnits` 等 hook 与依赖。
-- （无新类型、无 CSS。）
+- `src/components/ConfirmModal.tsx`：**新建**可复用确认弹窗（§4.5）。
+- `src/components/CanvasView.tsx`：扩展全局 keydown effect；新增 `viewportCenterCanvasCoords`/`zoomAroundCenter`/`resetZoomAroundCenter`/全选 helper；新增 `confirmDelete` state + 渲染 `ConfirmModal`；接入 store 的 `deleteUnits/nudgeUnits/arrangeUnits` 等 hook 与依赖。
+- `src/index.css`：复用现有 `.modal-overlay`/`.modal-box` 等；仅新增按钮行样式（`.confirm-actions` + `.confirm-btn`/`.confirm-btn.danger`）。
+- （无新类型。）
