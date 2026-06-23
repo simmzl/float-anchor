@@ -56,6 +56,7 @@ interface AppState {
   moveSection: (sectionId: string, dx: number, dy: number) => void
   autoFitSection: (sectionId: string) => void
   compactSection: (sectionId: string) => void
+  arrangeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => void
 
   finalizeCardMove: (cardId: string) => void
 
@@ -910,6 +911,122 @@ export const useStore = create<AppState>((set, get) => ({
             }
           : c,
       ),
+    }))
+    get().persist()
+  },
+
+  arrangeUnits: (ids) => {
+    const { activeCanvasId } = get()
+    if (!activeCanvasId) return
+    const canvas = get().canvases.find((c) => c.id === activeCanvasId)
+    if (!canvas) return
+
+    const cardIds = new Set(ids.cardIds)
+    const labelIds = new Set(ids.labelIds)
+    const sectionIds = new Set(ids.sectionIds)
+    const textIds = new Set(ids.textIds)
+
+    const selSections = (canvas.sections ?? []).filter((s) => sectionIds.has(s.id))
+    const memberOfSelected = new Set<string>()
+    for (const s of selSections) {
+      for (const cid of (s.cardIds ?? [])) memberOfSelected.add(cid)
+    }
+
+    type Unit = { id: string; x: number; y: number; w: number; h: number }
+    const units: Unit[] = []
+    for (const t of canvas.texts ?? []) {
+      if (textIds.has(t.id)) units.push({ id: t.id, x: t.x, y: t.y, w: t.width, h: t.height ?? 24 })
+    }
+    for (const l of canvas.labels ?? []) {
+      if (labelIds.has(l.id)) units.push({ id: l.id, x: l.x, y: l.y, w: l.width, h: 40 })
+    }
+    for (const s of canvas.sections ?? []) {
+      if (sectionIds.has(s.id)) units.push({ id: s.id, x: s.x, y: s.y, w: s.width, h: s.height })
+    }
+    for (const c of canvas.cards) {
+      if (cardIds.has(c.id) && !memberOfSelected.has(c.id)) {
+        units.push({ id: c.id, x: c.x, y: c.y, w: c.width, h: c.height ?? 200 })
+      }
+    }
+
+    if (units.length < 2) return
+
+    const GAP = 20
+
+    // 列聚类（按中心 x），复用 compactSection 思路
+    const byX = [...units].sort((a, b) => a.x - b.x)
+    const columns: Unit[][] = []
+    for (const r of byX) {
+      const cx = r.x + r.w / 2
+      let placed = false
+      for (const col of columns) {
+        const colCx = col[0].x + col[0].w / 2
+        if (Math.abs(cx - colCx) < Math.max(r.w, col[0].w) * 0.6) {
+          col.push(r); placed = true; break
+        }
+      }
+      if (!placed) columns.push([r])
+    }
+    for (const col of columns) col.sort((a, b) => a.y - b.y)
+    columns.sort((a, b) => {
+      const ma = a.reduce((s, r) => s + r.x, 0) / a.length
+      const mb = b.reduce((s, r) => s + r.x, 0) / b.length
+      return ma - mb
+    })
+
+    const originX = Math.min(...units.map((u) => u.x))
+    const originY = Math.min(...units.map((u) => u.y))
+    const newPos = new Map<string, { x: number; y: number }>()
+    let colX = originX
+    for (const col of columns) {
+      const colW = Math.max(...col.map((u) => u.w))
+      let cy = originY
+      for (const u of col) {
+        newPos.set(u.id, { x: Math.round(colX), y: Math.round(cy) })
+        cy += u.h + GAP
+      }
+      colX += colW + GAP
+    }
+
+    // 分区位移 + 成员卡片归属
+    const sectionDelta = new Map<string, { dx: number; dy: number }>()
+    for (const s of selSections) {
+      const np = newPos.get(s.id)
+      if (np) sectionDelta.set(s.id, { dx: np.x - s.x, dy: np.y - s.y })
+    }
+    const cardToSection = new Map<string, string>()
+    for (const s of selSections) {
+      for (const cid of (s.cardIds ?? [])) cardToSection.set(cid, s.id)
+    }
+
+    set((st) => ({
+      canvases: st.canvases.map((c) => {
+        if (c.id !== activeCanvasId) return c
+        return {
+          ...c,
+          texts: (c.texts ?? []).map((t) => {
+            const np = newPos.get(t.id)
+            return np ? { ...t, x: np.x, y: np.y } : t
+          }),
+          labels: (c.labels ?? []).map((l) => {
+            const np = newPos.get(l.id)
+            return np ? { ...l, x: np.x, y: np.y } : l
+          }),
+          sections: (c.sections ?? []).map((s) => {
+            const np = newPos.get(s.id)
+            return np ? { ...s, x: np.x, y: np.y } : s
+          }),
+          cards: c.cards.map((cd) => {
+            const secId = cardToSection.get(cd.id)
+            if (secId) {
+              const d = sectionDelta.get(secId)
+              return d ? { ...cd, x: cd.x + d.dx, y: cd.y + d.dy } : cd
+            }
+            const np = newPos.get(cd.id)
+            return np ? { ...cd, x: np.x, y: np.y } : cd
+          }),
+        }
+      }),
     }))
     get().persist()
   },
