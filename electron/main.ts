@@ -522,8 +522,28 @@ ipcMain.handle('sync-startup', async () => enqueueSync(async () => {
   try { return await runSync() } catch (err) { return { success: false, error: String(err) } }
 }))
 
+let lastRemoteTag: string | null = null
+
 ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
-  try { return await runSync() } catch (err) { return { success: false, error: String(err) } }
+  try {
+    const adapter = getActiveAdapter()
+    if (!adapter) return { success: false, error: '未配置同步' }
+    if (adapter.getRemoteTag) {
+      const tag = await adapter.getRemoteTag()
+      const store = getLocalStore()
+      const local = store.readSnapshot()
+      const localDirty = !!local && store.getModifiedAt() > (local._syncTimestamp || 0) + 1500
+      if (tag && tag === lastRemoteTag && !localDirty) {
+        return { success: true, action: 'up-to-date' }
+      }
+      const result = await reconcileState(adapter, store)
+      lastRemoteTag = tag
+      return result
+    }
+    return reconcileState(adapter, getLocalStore())
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
 }))
 
 ipcMain.handle('sync-resolve-conflict', async (_e, resolution: 'keep-local' | 'use-remote') => enqueueSync(async () => {

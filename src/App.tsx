@@ -8,7 +8,7 @@ import type { WebDAVSyncResult } from './types'
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 const SIDEBAR_DEFAULT = 228
-const BACKGROUND_SYNC_INTERVAL_MS = 10000
+const BACKGROUND_SYNC_INTERVAL_MS = 30000
 
 export default function App() {
   const { loaded, loadData, loadSettings } = useStore()
