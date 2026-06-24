@@ -1562,8 +1562,9 @@ input {
 .context-menu-shortcut {
   margin-left: auto;
   padding-left: 16px;
-  font-family: var(--mono);
-  font-size: 11px;
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
