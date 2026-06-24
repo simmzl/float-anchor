@@ -132,7 +132,7 @@ interface UpdateProgress {
 }
 
 interface SyncStatus {
-  status: 'syncing' | 'success' | 'error' | 'warning'
+  status: 'pending' | 'syncing' | 'success' | 'error' | 'warning'
   error?: string
 }
 

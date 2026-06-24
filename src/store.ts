@@ -15,7 +15,7 @@ interface AppState {
   highlightCardId: string | null
   loaded: boolean
   settings: AppSettings
-  syncStatus: 'idle' | 'syncing' | 'success' | 'error' | 'warning'
+  syncStatus: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning'
   syncDecision: WebDAVSyncDecision | null
   imageCacheVersion: number
   showSettings: boolean
@@ -28,7 +28,7 @@ interface AppState {
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
   setSyncProvider: (p: SyncProvider) => void
   setShowSettings: (v: boolean) => void
-  setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error' | 'warning') => void
+  setSyncStatus: (s: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning') => void
   setSyncDecision: (decision: WebDAVSyncDecision | null) => void
   refreshImageCache: () => void
 
@@ -75,9 +75,11 @@ interface AppState {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let syncTimer: ReturnType<typeof setTimeout> | undefined
+let lastRemoteUploadAt = 0
 
 const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
 const LOCAL_WEBDAV_SYNC_DELAY_MS = 2000
+const MIN_REMOTE_UPLOAD_INTERVAL_MS = 30000
 
 export const useStore = create<AppState>((set, get) => ({
   canvases: [],
@@ -134,10 +136,14 @@ export const useStore = create<AppState>((set, get) => ({
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
         if (getEffectiveProvider(settings) !== 'none' && !syncDecision) {
+          set({ syncStatus: 'pending' })
           clearTimeout(syncTimer)
+          const sinceLast = Date.now() - lastRemoteUploadAt
+          const delay = Math.max(LOCAL_WEBDAV_SYNC_DELAY_MS, MIN_REMOTE_UPLOAD_INTERVAL_MS - sinceLast)
           syncTimer = setTimeout(() => {
             set({ syncStatus: 'syncing' })
             window.electronAPI.syncAuto().then(async (res) => {
+              lastRemoteUploadAt = Date.now()
               if (!res.success) {
                 set({ syncStatus: 'error' })
                 return
@@ -163,7 +169,7 @@ export const useStore = create<AppState>((set, get) => ({
               }
               set({ syncStatus: 'idle', syncDecision: null })
             }).catch(() => set({ syncStatus: 'error' }))
-          }, LOCAL_WEBDAV_SYNC_DELAY_MS)
+          }, delay)
         }
       })
     }, 600)
