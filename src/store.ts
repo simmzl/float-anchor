@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
-import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox } from './types'
+import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox, SyncProvider } from './types'
+
+export function getEffectiveProvider(settings: AppSettings): SyncProvider {
+  return settings.syncProvider ?? (settings.webdav?.server ? 'webdav' : 'none')
+}
 
 interface AppState {
   canvases: Canvas[]
@@ -128,7 +132,7 @@ export const useStore = create<AppState>((set, get) => ({
       const { canvases, activeCanvasId, settings, syncDecision } = get()
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
-        if (settings.syncProvider && settings.syncProvider !== 'none' && !syncDecision) {
+        if (getEffectiveProvider(settings) !== 'none' && !syncDecision) {
           clearTimeout(syncTimer)
           syncTimer = setTimeout(() => {
             set({ syncStatus: 'syncing' })

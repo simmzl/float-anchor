@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileState, resolveConflict } from './engine'
+import { reconcileState, resolveConflict, downloadMissingImages } from './engine'
 import type { RemoteAdapter, LocalStore, RemoteImageEntry } from './types'
 import type { AppData } from './summary'
 
@@ -63,6 +63,39 @@ describe('reconcileState', () => {
     const store = memStore({ data: local, mtime: 999999 }) // mtime 远大于 ts → dirty
     const res = await reconcileState(fakeAdapter({ data: remote }), store)
     expect(res.action).toBe('needs-confirmation')
+  })
+})
+
+describe('downloadMissingImages — 扩展名容差匹配', () => {
+  it('本地引用 a.png，远端只有 a.jpeg → 应下载并写入 a.jpeg', async () => {
+    const remoteImages: RemoteImageEntry[] = [{ name: 'a.jpeg', size: 10 }]
+    const downloadedFiles: string[] = []
+    const adapter: RemoteAdapter = {
+      async test() { return { ok: true } },
+      async loadRemoteSnapshot() { return null },
+      async uploadRemoteSnapshot() { return {} },
+      async listRemoteImages() { return remoteImages },
+      async uploadImage() {},
+      async downloadImage(name) { return Buffer.from([0xff, 0xd8, 0xff]) }, // 模拟 JPEG buffer
+    }
+    const data: AppData = { canvases: [], activeCanvasId: null }
+    const store: LocalStore = {
+      readSnapshot() { return data },
+      writeSnapshot() {},
+      getModifiedAt() { return 0 },
+      markSynced() {},
+      backup() {},
+      listImages() { return [] },
+      readImage() { return null },
+      writeImage(name) { downloadedFiles.push(name) },
+      getMissingImageNames() { return ['a.png'] },
+      resolveStoredImagePath() { return null },
+    }
+    const n = await downloadMissingImages(adapter, store, data)
+    expect(n).toBe(1)
+    // 落盘文件名应含 a（basename 一致），且用远端扩展名 .jpeg
+    expect(downloadedFiles.length).toBe(1)
+    expect(downloadedFiles[0]).toMatch(/^a\.jpeg$/)
   })
 })
 

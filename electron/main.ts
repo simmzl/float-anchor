@@ -7,7 +7,7 @@ import archiver from 'archiver'
 import AdmZip from 'adm-zip'
 import { extractStoredImageName } from './sync/image-names'
 import { createNodeLocalStore } from './sync/local-store'
-import { reconcileState, resolveConflict } from './sync/engine'
+import { reconcileState, resolveConflict, LOCAL_SYNC_DIRTY_TOLERANCE_MS } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
@@ -489,6 +489,7 @@ function enqueueSync<T>(task: () => Promise<T>): Promise<T> {
 }
 
 ipcMain.handle('sync-test', async (_e, config: { server: string; username: string; password: string }) => {
+  // TODO(计划2 Task4): 按 active provider 分派；当前仅 WebDAV
   // 计划 1 仅 WebDAV：直接测 webdav config
   const adapter = createWebDAVAdapter(config)
   const r = await adapter.test()
@@ -532,7 +533,7 @@ ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
       const tag = await adapter.getRemoteTag()
       const store = getLocalStore()
       const local = store.readSnapshot()
-      const localDirty = !!local && store.getModifiedAt() > (local._syncTimestamp || 0) + 1500
+      const localDirty = !!local && store.getModifiedAt() > (local._syncTimestamp || 0) + LOCAL_SYNC_DIRTY_TOLERANCE_MS
       if (tag && tag === lastRemoteTag && !localDirty) {
         return { success: true, action: 'up-to-date' }
       }

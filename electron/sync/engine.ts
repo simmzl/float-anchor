@@ -1,11 +1,13 @@
+import path from 'node:path'
 import type { AppData, SyncResolution } from './summary'
 import {
   normalizeSyncData, summarizeSyncData, hasMeaningfulSyncData, getComparableSyncSnapshot,
   isHighRiskRemoteOverwrite, buildSyncDecision,
 } from './summary'
 import type { RemoteAdapter, LocalStore, SyncResult } from './types'
+import { isRemoteImageNameMatch, getImageBasename } from './image-names'
 
-const LOCAL_SYNC_DIRTY_TOLERANCE_MS = 1500
+export const LOCAL_SYNC_DIRTY_TOLERANCE_MS = 1500
 
 async function uploadImagesDiff(adapter: RemoteAdapter, store: LocalStore) {
   const local = store.listImages()
@@ -20,18 +22,22 @@ async function uploadImagesDiff(adapter: RemoteAdapter, store: LocalStore) {
   }
 }
 
-async function downloadMissingImages(adapter: RemoteAdapter, store: LocalStore, data: AppData): Promise<number> {
+export async function downloadMissingImages(adapter: RemoteAdapter, store: LocalStore, data: AppData): Promise<number> {
   const missing = store.getMissingImageNames(data)
   if (missing.length === 0) return 0
   const remote = await adapter.listRemoteImages()
   if (remote.length === 0) return 0
   let n = 0
   for (const name of missing) {
-    const base = name.split(/[?#]/)[0].replace(/\\/g, '/').split('/').pop() || name
-    const entry = remote.find((r) => r.name === base || r.name === name)
+    const wantedBase = getImageBasename(name)
+    const entry = remote.find((r) => isRemoteImageNameMatch(wantedBase, r.name))
     if (!entry) continue
     const buf = await adapter.downloadImage(entry.name)
-    store.writeImage(entry.name, buf)
+    // 落盘名：若引用名扩展名与远端一致则用引用名，否则用远端文件名（保留实际格式）
+    const refExt = path.extname(name).toLowerCase()
+    const remoteExt = path.extname(entry.name).toLowerCase()
+    const localFileName = (refExt && refExt === remoteExt) ? (wantedBase || entry.name) : entry.name
+    store.writeImage(localFileName, buf)
     n += 1
   }
   return n
@@ -39,7 +45,7 @@ async function downloadMissingImages(adapter: RemoteAdapter, store: LocalStore, 
 
 async function uploadSnapshot(adapter: RemoteAdapter, store: LocalStore): Promise<AppData> {
   const local = store.readSnapshot()
-  const data = normalizeSyncData(local, Date.now())
+  const data = normalizeSyncData(local, 0)
   data._syncTimestamp = Date.now()
   await uploadImagesDiff(adapter, store)
   await adapter.uploadRemoteSnapshot(data)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useStore } from '../store'
+import { useStore, getEffectiveProvider } from '../store'
 import type { WebDAVConfig, WebDAVSyncResolution, WebDAVSyncResult, WebDAVSyncSummary } from '../types'
 import { SHORTCUTS, scKey } from '../shortcuts'
 
@@ -292,8 +292,7 @@ export default function SettingsModal() {
   }, [applySyncResult, server, username, password, setWebDAVConfig])
 
   const handleManualSync = useCallback(async () => {
-    const cfg = settings.webdav
-    if (!cfg?.server) return
+    if (getEffectiveProvider(settings) === 'none') return
     const store = useStore.getState()
     store.setSyncStatus('syncing')
     try {
@@ -306,11 +305,10 @@ export default function SettingsModal() {
     } catch {
       store.setSyncStatus('error')
     }
-  }, [applySyncResult, settings.webdav])
+  }, [applySyncResult, settings])
 
   const handleResolveSync = useCallback(async (resolution: WebDAVSyncResolution) => {
-    const cfg = settings.webdav
-    if (!cfg?.server) return
+    if (getEffectiveProvider(settings) === 'none') return
     if (resolution === 'use-remote' && syncDecision?.risk === 'high') {
       const confirmed = window.confirm(
         `这是高危覆盖操作。\n\n本地：${formatSyncSummary(syncDecision.localSummary)}\n云端：${formatSyncSummary(syncDecision.remoteSummary)}\n\n继续后，当前本地大量数据会被云端覆盖。确定继续吗？`,
@@ -328,7 +326,7 @@ export default function SettingsModal() {
     } finally {
       setSyncResolveLoading(null)
     }
-  }, [applySyncResult, formatSyncSummary, settings.webdav, syncDecision])
+  }, [applySyncResult, formatSyncSummary, settings, syncDecision])
 
   const handleDisconnect = useCallback(() => {
     setWebDAVConfig(undefined)

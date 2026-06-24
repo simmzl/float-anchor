@@ -3,7 +3,7 @@ import path from 'node:path'
 import type { AppData } from './summary'
 import { normalizeSyncData } from './summary'
 import type { LocalStore, LocalImage } from './types'
-import { IMAGE_EXTENSION_CANDIDATES, extractStoredImageName, getImageBasename, getReferencedImageNames } from './image-names'
+import { IMAGE_EXTENSION_CANDIDATES, getReferencedImageNames } from './image-names'
 
 export function isRealImageFile(filePath: string): boolean {
   try {

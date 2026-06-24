@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useStore } from './store'
+import { useStore, getEffectiveProvider } from './store'
 import Sidebar from './components/Sidebar'
 import CanvasView from './components/CanvasView'
 import SettingsModal from './components/SettingsModal'
@@ -13,7 +13,7 @@ const BACKGROUND_SYNC_INTERVAL_MS = 30000
 export default function App() {
   const { loaded, loadData, loadSettings } = useStore()
   const showSettings = useStore((s) => s.showSettings)
-  const syncProvider = useStore((s) => s.settings.syncProvider)
+  const syncProvider = useStore((s) => getEffectiveProvider(s.settings))
   const syncDecision = useStore((s) => s.syncDecision)
   const [platform, setPlatform] = useState<string>('darwin')
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
@@ -99,7 +99,7 @@ export default function App() {
       if (disposed) return
 
       const { settings } = useStore.getState()
-      if (!settings.syncProvider || settings.syncProvider === 'none') return
+      if (getEffectiveProvider(settings) === 'none') return
 
       try {
         useStore.getState().setSyncStatus('syncing')
@@ -135,7 +135,7 @@ export default function App() {
   }, [applySyncResult])
 
   useEffect(() => {
-    if (!syncProvider || syncProvider === 'none' || syncDecision) return
+    if (syncProvider === 'none' || syncDecision) return
     const timer = window.setInterval(() => {
       void runBackgroundSync()
     }, BACKGROUND_SYNC_INTERVAL_MS)

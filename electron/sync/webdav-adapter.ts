@@ -65,7 +65,7 @@ export function createWebDAVAdapter(config: { server: string; username: string; 
       const entries = await client.getDirectoryContents(WEBDAV_REMOTE_IMAGES_DIR)
       return (Array.isArray(entries) ? entries : [entries])
         .filter((e: any) => e?.type === 'file')
-        .map((e: any) => ({ name: e.basename || path.posix.basename(e.filename || ''), size: e.size || 0 }))
+        .map((e: any) => ({ name: e.basename || path.posix.basename(e.filename || ''), size: e.size ?? 0 }))
     },
     async uploadImage(name: string, buf: Buffer) {
       const client = await getClient()
