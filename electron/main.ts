@@ -5,6 +5,11 @@ import { pathToFileURL } from 'node:url'
 import { exec } from 'node:child_process'
 import archiver from 'archiver'
 import AdmZip from 'adm-zip'
+import {
+  normalizeSyncData, summarizeSyncData, hasMeaningfulSyncData, getComparableSyncSnapshot,
+  formatSyncSummary, isHighRiskRemoteOverwrite, buildSyncDecision,
+} from './sync/summary'
+import type { SyncSummary, SyncResolution } from './sync/summary'
 
 let dataDir = ''
 let dataFile = ''
@@ -697,99 +702,6 @@ async function downloadMissingRemoteImagesForData(client: any, data: any) {
 
 function getCardCount(data: any) {
   return (data?.canvases || []).reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
-}
-
-interface SyncSummary {
-  canvasCount: number
-  cardCount: number
-  labelCount: number
-  sectionCount: number
-  connectionCount: number
-  totalEntityCount: number
-}
-
-type SyncResolution = 'keep-local' | 'use-remote'
-
-function normalizeSyncData(data: any, fallbackSyncTimestamp = 0) {
-  return {
-    ...(data && typeof data === 'object' && !Array.isArray(data) ? data : {}),
-    canvases: Array.isArray(data?.canvases) ? data.canvases : [],
-    activeCanvasId: data?.activeCanvasId ?? null,
-    _syncTimestamp: typeof data?._syncTimestamp === 'number' ? data._syncTimestamp : fallbackSyncTimestamp,
-  }
-}
-
-function summarizeSyncData(data: any): SyncSummary {
-  const normalized = normalizeSyncData(data)
-  const canvases = normalized.canvases || []
-  const cardCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.cards?.length || 0), 0)
-  const labelCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.labels?.length || 0), 0)
-  const sectionCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.sections?.length || 0), 0)
-  const connectionCount = canvases.reduce((sum: number, canvas: any) => sum + (canvas.connections?.length || 0), 0)
-  return {
-    canvasCount: canvases.length,
-    cardCount,
-    labelCount,
-    sectionCount,
-    connectionCount,
-    totalEntityCount: cardCount + labelCount + sectionCount + connectionCount,
-  }
-}
-
-function hasMeaningfulSyncData(summary: SyncSummary) {
-  return summary.totalEntityCount > 0 || summary.canvasCount > 1
-}
-
-function getComparableSyncSnapshot(data: any) {
-  const normalized = normalizeSyncData(data)
-  return JSON.stringify({
-    canvases: normalized.canvases,
-    activeCanvasId: normalized.activeCanvasId,
-  })
-}
-
-function formatSyncSummary(summary: SyncSummary) {
-  return `${summary.canvasCount} 个画布、${summary.cardCount} 张卡片、${summary.labelCount} 个标题、${summary.sectionCount} 个分区、${summary.connectionCount} 条连线`
-}
-
-function isHighRiskRemoteOverwrite(localSummary: SyncSummary, remoteSummary: SyncSummary) {
-  if (!hasMeaningfulSyncData(localSummary)) return false
-  if (!hasMeaningfulSyncData(remoteSummary)) return true
-  if (localSummary.cardCount >= 10 && remoteSummary.cardCount === 0) return true
-
-  const entityLoss = localSummary.totalEntityCount - remoteSummary.totalEntityCount
-  return entityLoss >= 20 && remoteSummary.totalEntityCount <= Math.floor(localSummary.totalEntityCount * 0.7)
-}
-
-function buildSyncDecision(
-  localData: any,
-  remoteData: any,
-  reason: 'remote-newer' | 'diverged' | 'destructive-remote',
-) {
-  const normalizedLocal = normalizeSyncData(localData)
-  const normalizedRemote = normalizeSyncData(remoteData)
-  const localSummary = summarizeSyncData(normalizedLocal)
-  const remoteSummary = summarizeSyncData(normalizedRemote)
-  const highRisk = reason === 'destructive-remote' || isHighRiskRemoteOverwrite(localSummary, remoteSummary)
-
-  let message = `检测到云端与本地数据不同步，当前仍会优先保留本地显示。请确认是保留本地上传，还是使用云端覆盖本地。`
-  if (reason === 'remote-newer' && !highRisk) {
-    message = `检测到云端有更新，本地仍会优先显示。请确认是否使用云端数据更新本地内容。`
-  }
-  if (highRisk) {
-    message = `云端数据会把本地数据从 ${formatSyncSummary(localSummary)} 变成 ${formatSyncSummary(remoteSummary)}。这是高危操作，请确认是否继续使用云端数据覆盖本地。`
-  }
-
-  return {
-    reason: highRisk ? 'destructive-remote' : reason,
-    risk: highRisk ? 'high' as const : 'low' as const,
-    message,
-    preferredResolution: 'keep-local' as const,
-    localSummary,
-    remoteSummary,
-    localTimestamp: normalizedLocal._syncTimestamp || 0,
-    remoteTimestamp: normalizedRemote._syncTimestamp || 0,
-  }
 }
 
 function getLocalFileModifiedAt(file: string) {
