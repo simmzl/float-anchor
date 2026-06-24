@@ -33,7 +33,7 @@
 | 取消选择 / 退出连线 | `Esc` | 现有行为，保留 |
 | 编辑选中 | `Enter` | 仅当**恰好单选一个卡片或文本框**时进入其编辑态 |
 | 删除选中 | `Delete` / `Backspace` | 弹**二次确认弹窗**，确认后删除所有选中元素（见 §6 语义）；连线模式下 `Backspace` 仍为取消连线 |
-| 自动排布选中 | `Mod+Shift+A` | 选中可排布单位 ≥2 时调用 `arrangeUnits`（复用既有功能） |
+| 自动排布选中 | `Mod+Shift+L` | 选中可排布单位 ≥2 时调用 `arrangeUnits`（复用既有功能） |
 | 微移选中 | `方向键` | 移 1px；`Shift+方向键` 移 10px |
 | 放大 / 缩小 | `Mod+=` / `Mod+-` | 以视口中心缩放（含 `Mod++` 同放大） |
 | 缩放复位 | `Mod+0` | 回到 100%，以视口中心为锚 |
@@ -134,7 +134,7 @@ interface ConfirmModalProps {
 - **Mod+A 全选**：§4.4。再次说明 Enter/Delete 等随后可作用于全选结果。
 - **Enter 编辑**：仅当 `cardIds.size + labelIds.size + sectionIds.size + textIds.size === 1`。若该 1 个是卡片→`setEditingCard(id)`；是文本→`setEditingText(id)`；是标题/分区→不处理（无全局编辑态）。
 - **Delete/Backspace 删除**：选区非空才动作；§6 语义；删后 `setSelection(empty)`。连线模式优先（`connectingFrom` 时 Backspace 走取消连线分支）。
-- **Mod+Shift+A 自动排布**：调 `arrangeUnits([...各 Set])`；store 内 `units<2` 兜底为 no-op。
+- **Mod+Shift+L 自动排布**：调 `arrangeUnits([...各 Set])`；store 内 `units<2` 兜底为 no-op。
 - **方向键微移**：`nudgeUnits(选区, dx, dy)`，`↑↓←→` 对应 `(0,-s)/(0,+s)/(-s,0)/(+s,0)`，`s = e.shiftKey ? 10 : 1`。
 - **缩放**：§4.3，clamp 到 `MIN_SCALE/MAX_SCALE`。
 
@@ -151,7 +151,7 @@ interface ConfirmModalProps {
 1. tsc、build 通过。
 2. 非编辑态：`C/T/R` 在视口中心建卡片/文本/分区（卡片、文本自动进入编辑）。
 3. 编辑某卡片/文本时按 `C/T/R/Delete/方向键` → 只是正常输入字符/移动光标，**不触发**全局操作。
-4. `Mod+A` 全选；`Mod+Shift+A` 把选中整理成紧凑列；`Esc` 清选。
+4. `Mod+A` 全选；`Mod+Shift+L` 把选中整理成紧凑列；`Esc` 清选。
 5. 框选若干 → `Delete`/`Backspace` 弹确认弹窗（显示"N 个元素"），`Enter`/点确认才删除、`Esc`/取消则不删；`方向键`/`Shift+方向键` 以 1/10px 微移。弹窗打开时按其它快捷键无效（只 Enter/Esc 生效）。
 6. 单选一个卡片 → `Enter` 进入编辑。
 7. `Mod+=`/`Mod+-`/`Mod+0` 以视口中心缩放/复位，右下角缩放百分比同步。

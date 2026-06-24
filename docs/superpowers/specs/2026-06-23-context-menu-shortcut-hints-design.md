@@ -6,7 +6,7 @@
 
 ## 1. 背景与目标
 
-刚加了一套画布快捷键（C/T/R 新建、⌘⇧A 自动排布、Enter 编辑、Delete 删除等）。右键菜单里这些操作目前没有任何快捷键提示。
+刚加了一套画布快捷键（C/T/R 新建、⌘⇧L 自动排布、Enter 编辑、Delete 删除等）。右键菜单里这些操作目前没有任何快捷键提示。
 
 本功能：**在右键菜单中，凡有对应快捷键的菜单项，在其右侧显示该快捷键标记**（类似 macOS 菜单里 "⌘C" 的样式），平台自适应。
 
@@ -27,7 +27,7 @@
 | 创建空白卡片 | 空白右键 | `C` | `C` |
 | 创建文本 | 空白右键 | `T` | `T` |
 | 创建分区 | 空白右键 | `R` | `R` |
-| 自动排布 | 选区右键（≥2 选中） | `⌘⇧A` | `Ctrl+Shift+A` |
+| 自动排布 | 选区右键（≥2 选中） | `⌘⇧L` | `Ctrl+Shift+L` |
 | 编辑 | 卡片右键 | `⏎` | `Enter` |
 | 删除 | 卡片右键 | `⌫` | `Del` |
 
@@ -46,8 +46,8 @@
   ```ts
   const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
   const SC = IS_MAC
-    ? { card: 'C', text: 'T', section: 'R', arrange: '⌘⇧A', edit: '⏎', del: '⌫' }
-    : { card: 'C', text: 'T', section: 'R', arrange: 'Ctrl+Shift+A', edit: 'Enter', del: 'Del' }
+    ? { card: 'C', text: 'T', section: 'R', arrange: '⌘⇧L', edit: '⏎', del: '⌫' }
+    : { card: 'C', text: 'T', section: 'R', arrange: 'Ctrl+Shift+L', edit: 'Enter', del: 'Del' }
   ```
 - 在 `handleContextMenu` 构建菜单项时，为下列 6 项各加一行 `shortcut: SC.xxx`：
   - 选区菜单「自动排布」→ `shortcut: SC.arrange`
@@ -84,7 +84,7 @@
 1. tsc、build 通过。
 2. 空白处右键 → 「创建空白卡片/文本/分区」右侧分别显示 `C`/`T`/`R`；「创建标题」无标记。
 3. 卡片右键 → 「编辑」显示 `⏎`(mac)/`Enter`(win)、「删除」显示 `⌫`/`Del`（红色调）；其余项无标记。
-4. 框选 ≥2 → 选区右键 → 「自动排布」显示 `⌘⇧A`/`Ctrl+Shift+A`。
+4. 框选 ≥2 → 选区右键 → 「自动排布」显示 `⌘⇧L`/`Ctrl+Shift+L`。
 5. 标记右对齐、淡色、等宽字体，不影响点击。
 6. 现有菜单项点击行为无回归。
 
