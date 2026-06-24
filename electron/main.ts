@@ -10,6 +10,10 @@ import {
   formatSyncSummary, isHighRiskRemoteOverwrite, buildSyncDecision,
 } from './sync/summary'
 import type { SyncSummary, SyncResolution } from './sync/summary'
+import {
+  IMAGE_EXTENSION_CANDIDATES, getImageBasename, extractStoredImageName,
+  isRemoteImageNameMatch, getReferencedImageNames,
+} from './sync/image-names'
 
 let dataDir = ''
 let dataFile = ''
@@ -492,8 +496,6 @@ function getImagesDir() {
   return path.join(dir, 'images')
 }
 
-const IMAGE_EXTENSION_CANDIDATES = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff']
-
 function isRealImageFile(filePath: string) {
   try {
     const header = fs.readFileSync(filePath).subarray(0, 12)
@@ -523,40 +525,6 @@ function resolveStoredImagePath(fileName: string) {
   }
 
   return null
-}
-
-function getImageBasename(value: string) {
-  const clean = value.split(/[?#]/)[0].replace(/\\/g, '/')
-  return path.posix.basename(clean)
-}
-
-function extractStoredImageName(value: string) {
-  if (!value) return null
-
-  let decoded = value.trim().replace(/^<|>$/g, '')
-  try {
-    decoded = decodeURIComponent(decoded)
-  } catch {}
-
-  const normalized = decoded.replace(/\\/g, '/')
-  if (normalized.startsWith('fa-img://')) {
-    return getImageBasename(normalized.replace(/^fa-img:\/\//, ''))
-  }
-
-  const imageName = getImageBasename(normalized)
-  if (!imageName || !IMAGE_EXTENSION_CANDIDATES.includes(path.extname(imageName).toLowerCase())) {
-    return null
-  }
-
-  const lower = normalized.toLowerCase()
-  const looksLikeStoredImagePath = (
-    lower.includes('/float-anchor/data/images/') ||
-    lower.includes('/floatanchor/data/images/') ||
-    lower.includes('/application support/float-anchor/data/images/') ||
-    lower.includes('/appdata/roaming/float-anchor/data/images/')
-  )
-
-  return looksLikeStoredImagePath ? imageName : null
 }
 
 async function ensureRemoteDirectory(client: any, remoteDir: string) {
@@ -631,39 +599,8 @@ async function downloadRemoteImages(client: any) {
   return files.length
 }
 
-function getReferencedImageNames(data: any) {
-  const referenced = new Set<string>()
-
-  for (const canvas of data?.canvases || []) {
-    for (const card of canvas.cards || []) {
-      const content = typeof card.content === 'string' ? card.content : ''
-      for (const match of content.matchAll(/fa-img:\/\/([^\s)]+)/g)) {
-        const imageName = extractStoredImageName(`fa-img://${match[1]}`)
-        if (imageName) referenced.add(imageName)
-      }
-      for (const match of content.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)) {
-        const imageName = extractStoredImageName(match[1])
-        if (imageName) referenced.add(imageName)
-      }
-      for (const match of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
-        const imageName = extractStoredImageName(match[1])
-        if (imageName) referenced.add(imageName)
-      }
-    }
-  }
-
-  return referenced
-}
-
 function getMissingLocalImageNames(data: any) {
   return Array.from(getReferencedImageNames(data)).filter((fileName) => !resolveStoredImagePath(fileName))
-}
-
-function isRemoteImageNameMatch(requestedName: string, remoteName: string) {
-  if (remoteName === requestedName) return true
-  const requestedBase = path.parse(path.basename(requestedName)).name || requestedName
-  const remoteBase = path.posix.parse(remoteName).name || remoteName
-  return requestedBase === remoteBase && IMAGE_EXTENSION_CANDIDATES.includes(path.extname(remoteName).toLowerCase())
 }
 
 async function downloadMissingRemoteImagesForData(client: any, data: any) {
