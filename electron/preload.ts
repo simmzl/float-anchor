@@ -40,4 +40,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   prepareClearAllData: () => ipcRenderer.invoke('prepare-clear-all-data'),
   clearAllData: () => ipcRenderer.invoke('clear-all-data'),
   getBackupDir: () => ipcRenderer.invoke('get-backup-dir'),
+  onedriveStatus: () => ipcRenderer.invoke('onedrive-status'),
+  onedriveConnect: () => ipcRenderer.invoke('onedrive-connect'),
+  onedriveCancelConnect: () => ipcRenderer.invoke('onedrive-cancel-connect'),
+  onedriveDisconnect: () => ipcRenderer.invoke('onedrive-disconnect'),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  onOneDriveDeviceCode: (cb: (info: any) => void) => {
+    const h = (_e: any, info: any) => cb(info)
+    ipcRenderer.on('onedrive-device-code', h)
+    return () => ipcRenderer.removeListener('onedrive-device-code', h)
+  },
 })
