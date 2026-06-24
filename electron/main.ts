@@ -5,15 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { exec } from 'node:child_process'
 import archiver from 'archiver'
 import AdmZip from 'adm-zip'
-import {
-  normalizeSyncData, summarizeSyncData, hasMeaningfulSyncData, getComparableSyncSnapshot,
-  formatSyncSummary, isHighRiskRemoteOverwrite, buildSyncDecision,
-} from './sync/summary'
-import type { SyncSummary, SyncResolution } from './sync/summary'
-import {
-  IMAGE_EXTENSION_CANDIDATES, getImageBasename, extractStoredImageName,
-  isRemoteImageNameMatch, getReferencedImageNames,
-} from './sync/image-names'
+import { extractStoredImageName } from './sync/image-names'
 import { createNodeLocalStore } from './sync/local-store'
 import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'

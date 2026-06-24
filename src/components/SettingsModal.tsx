@@ -213,7 +213,7 @@ export default function SettingsModal() {
   const [syncResolveLoading, setSyncResolveLoading] = useState<WebDAVSyncResolution | null>(null)
 
   const formatSyncSummary = useCallback((summary: WebDAVSyncSummary) => {
-    return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线`
+    return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线 / ${summary.textCount} 个文本框`
   }, [])
 
   const markSyncSuccess = useCallback(() => {
@@ -266,7 +266,7 @@ export default function SettingsModal() {
     if (!server || !username || !password) return
     setTestResult('testing')
     const config: WebDAVConfig = { server, username, password }
-    const res = await window.electronAPI.webdavTest(config)
+    const res = await window.electronAPI.syncTest(config)
     setTestResult(res.success ? 'ok' : 'fail')
     setTimeout(() => setTestResult('idle'), 3000)
   }, [server, username, password])
@@ -274,14 +274,15 @@ export default function SettingsModal() {
   const handleSave = useCallback(async () => {
     if (!server || !username || !password) return
     const config: WebDAVConfig = { server, username, password }
-    const res = await window.electronAPI.webdavTest(config)
+    const res = await window.electronAPI.syncTest(config)
     if (res.success) {
       setWebDAVConfig(config)
+      useStore.getState().saveSettings({ ...useStore.getState().settings, webdav: config, syncProvider: 'webdav' })
       setConnected(true)
       setTestResult('ok')
       setTimeout(() => setTestResult('idle'), 2000)
       useStore.getState().setSyncStatus('syncing')
-      window.electronAPI.webdavAutoSync(config).then(async (syncRes) => {
+      window.electronAPI.syncAuto().then(async (syncRes) => {
         await applySyncResult(syncRes)
       }).catch(() => useStore.getState().setSyncStatus('error'))
     } else {
@@ -300,7 +301,7 @@ export default function SettingsModal() {
         canvases: store.canvases,
         activeCanvasId: store.activeCanvasId,
       })
-      const res = await window.electronAPI.webdavStartupSync(cfg)
+      const res = await window.electronAPI.syncStartup()
       await applySyncResult(res)
     } catch {
       store.setSyncStatus('error')
@@ -320,7 +321,7 @@ export default function SettingsModal() {
     setSyncResolveLoading(resolution)
     useStore.getState().setSyncStatus('syncing')
     try {
-      const res = await window.electronAPI.webdavResolveConflict(cfg, resolution)
+      const res = await window.electronAPI.syncResolveConflict(resolution)
       await applySyncResult(res)
     } catch {
       useStore.getState().setSyncStatus('error')

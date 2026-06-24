@@ -128,11 +128,11 @@ export const useStore = create<AppState>((set, get) => ({
       const { canvases, activeCanvasId, settings, syncDecision } = get()
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
-        if (settings.webdav?.server && !syncDecision) {
+        if (settings.syncProvider && settings.syncProvider !== 'none' && !syncDecision) {
           clearTimeout(syncTimer)
           syncTimer = setTimeout(() => {
             set({ syncStatus: 'syncing' })
-            window.electronAPI.webdavAutoSync(settings.webdav!).then(async (res) => {
+            window.electronAPI.syncAuto().then(async (res) => {
               if (!res.success) {
                 set({ syncStatus: 'error' })
                 return
