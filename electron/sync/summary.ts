@@ -54,8 +54,7 @@ export function summarizeSyncData(data: any): SyncSummary {
     sectionCount,
     connectionCount,
     textCount,
-    // 注意：本 Task 暂不把 textCount 计入，Task 3 再改
-    totalEntityCount: cardCount + labelCount + sectionCount + connectionCount,
+    totalEntityCount: cardCount + labelCount + sectionCount + connectionCount + textCount,
   }
 }
 
@@ -72,7 +71,7 @@ export function getComparableSyncSnapshot(data: any): string {
 }
 
 export function formatSyncSummary(summary: SyncSummary): string {
-  return `${summary.canvasCount} 个画布、${summary.cardCount} 张卡片、${summary.labelCount} 个标题、${summary.sectionCount} 个分区、${summary.connectionCount} 条连线`
+  return `${summary.canvasCount} 个画布、${summary.cardCount} 张卡片、${summary.labelCount} 个标题、${summary.sectionCount} 个分区、${summary.connectionCount} 条连线、${summary.textCount} 个文本框`
 }
 
 export function isHighRiskRemoteOverwrite(localSummary: SyncSummary, remoteSummary: SyncSummary): boolean {

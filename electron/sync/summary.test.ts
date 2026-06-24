@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  summarizeSyncData, hasMeaningfulSyncData, isHighRiskRemoteOverwrite, buildSyncDecision,
+  summarizeSyncData, hasMeaningfulSyncData, isHighRiskRemoteOverwrite, buildSyncDecision, formatSyncSummary,
 } from './summary'
 
 const canvas = (over: any = {}) => ({ id: 'c1', name: 'C', cards: [], ...over })
@@ -39,5 +39,25 @@ describe('buildSyncDecision', () => {
     const d = buildSyncDecision(local, remote, 'remote-newer')
     expect(d.risk).toBe('low')
     expect(d.reason).toBe('remote-newer')
+  })
+})
+
+describe('texts 纳入保护（Task 3）', () => {
+  const canvas = (over: any = {}) => ({ id: 'c1', name: 'C', cards: [], ...over })
+
+  it('只有文本框的单画布应为有意义数据', () => {
+    const s = summarizeSyncData({ canvases: [canvas({ texts: [{}, {}] })], activeCanvasId: 'c1' })
+    expect(hasMeaningfulSyncData(s)).toBe(true)
+  })
+
+  it('本地仅文本框、远端为空 → 高危覆盖', () => {
+    const local = summarizeSyncData({ canvases: [canvas({ texts: [{}, {}, {}] })] })
+    const remote = summarizeSyncData({ canvases: [] })
+    expect(isHighRiskRemoteOverwrite(local, remote)).toBe(true)
+  })
+
+  it('formatSyncSummary 含文本框数量', () => {
+    const s = summarizeSyncData({ canvases: [canvas({ texts: [{}] })] })
+    expect(formatSyncSummary(s)).toContain('文本框')
   })
 })
