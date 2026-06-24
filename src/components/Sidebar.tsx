@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '../store'
 import { shallow } from 'zustand/shallow'
+import SyncStatusIndicator from './SyncStatusIndicator'
 
 function UpdateBanner() {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; downloadUrl: string; assetName: string } | null>(null)
@@ -179,6 +180,7 @@ export default function Sidebar({ width }: { width?: number }) {
           </svg>
           <span>FloatAnchor</span>
         </div>
+        <SyncStatusIndicator />
         <button
           className="settings-gear"
           onClick={() => useStore.getState().setShowSettings(true)}
