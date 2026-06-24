@@ -26,6 +26,7 @@ interface AppState {
   saveSettings: (s: AppSettings) => Promise<void>
   setTheme: (theme: 'light' | 'dark') => void
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
+  setSyncProvider: (p: SyncProvider) => void
   setShowSettings: (v: boolean) => void
   setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error' | 'warning') => void
   setSyncDecision: (decision: WebDAVSyncDecision | null) => void
@@ -191,6 +192,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   setWebDAVConfig: (config) => {
     const s = { ...get().settings, webdav: config }
+    get().saveSettings(s)
+  },
+
+  setSyncProvider: (p) => {
+    const s = { ...get().settings, syncProvider: p }
     get().saveSettings(s)
   },
 

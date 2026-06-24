@@ -2537,3 +2537,78 @@ input {
   background: var(--sidebar-hover);
   border-radius: var(--radius-sm);
 }
+
+/* Provider Switcher */
+.provider-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.provider-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.provider-option:hover {
+  background: var(--sidebar-hover);
+}
+
+.provider-option.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* OneDrive Panel */
+.onedrive-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.onedrive-account {
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  background: var(--sidebar-hover);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.onedrive-devicecode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onedrive-devicecode p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  word-break: break-all;
+}
+
+.device-code {
+  font-family: monospace;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--text-primary);
+  user-select: text;
+  padding: 10px 14px;
+  background: var(--sidebar-hover);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
