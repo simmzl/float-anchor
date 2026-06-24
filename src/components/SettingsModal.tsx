@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '../store'
 import type { WebDAVConfig, WebDAVSyncResolution, WebDAVSyncResult, WebDAVSyncSummary } from '../types'
+import { SHORTCUTS, scKey } from '../shortcuts'
 
 export default function SettingsModal() {
   const settings = useStore((s) => s.settings)
@@ -394,6 +395,18 @@ export default function SettingsModal() {
               </svg>
               Dark
             </button>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h3>键盘快捷键</h3>
+          <div className="shortcut-list">
+            {SHORTCUTS.map((s) => (
+              <div className="shortcut-row" key={s.id}>
+                <span className="shortcut-label">{s.label}</span>
+                <span className="shortcut-key">{scKey(s.id)}</span>
+              </div>
+            ))}
           </div>
         </div>
 

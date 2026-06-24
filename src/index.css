@@ -2503,3 +2503,37 @@ input {
 .confirm-btn.danger:focus-visible {
   outline-color: var(--danger);
 }
+
+/* ===== Settings: Keyboard Shortcuts ===== */
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-row:last-child {
+  border-bottom: none;
+}
+
+.shortcut-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.shortcut-key {
+  font-family: var(--font);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: var(--sidebar-hover);
+  border-radius: var(--radius-sm);
+}
