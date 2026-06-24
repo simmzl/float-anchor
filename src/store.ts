@@ -143,8 +143,8 @@ export const useStore = create<AppState>((set, get) => ({
           syncTimer = setTimeout(() => {
             set({ syncStatus: 'syncing' })
             window.electronAPI.syncAuto().then(async (res) => {
-              lastRemoteUploadAt = Date.now()
               if (!res.success) {
+                // 失败时不更新 lastRemoteUploadAt，使下次编辑可较快重试（delay 退化为 2s）
                 set({ syncStatus: 'error' })
                 return
               }
@@ -156,15 +156,21 @@ export const useStore = create<AppState>((set, get) => ({
                 })
                 return
               }
-              if (res.success && res.action === 'downloaded' && res.data) {
+              if (res.action === 'downloaded' && res.data) {
                 await get().loadData()
                 get().refreshImageCache()
               }
-              if (res.action === 'uploaded' || res.action === 'downloaded') {
-                set({ syncStatus: 'success', syncDecision: null })
-                setTimeout(() => {
-                  if (get().syncStatus === 'success') set({ syncStatus: 'idle' })
-                }, 3000)
+              if (res.action === 'uploaded' || res.action === 'downloaded' || res.action === 'up-to-date') {
+                // 仅成功路径才更新节流时间戳
+                lastRemoteUploadAt = Date.now()
+                if (res.action !== 'up-to-date') {
+                  set({ syncStatus: 'success', syncDecision: null })
+                  setTimeout(() => {
+                    if (get().syncStatus === 'success') set({ syncStatus: 'idle' })
+                  }, 3000)
+                } else {
+                  set({ syncStatus: 'idle', syncDecision: null })
+                }
                 return
               }
               set({ syncStatus: 'idle', syncDecision: null })

@@ -837,14 +837,23 @@ ipcMain.handle('onedrive-status', async () => {
 
 ipcMain.handle('onedrive-connect', async () => {
   if (!isOneDriveConfigured()) return { success: false, error: '未配置 OneDrive Client ID' }
-  const res = await startDeviceLogin((info) => {
-    mainWindow?.webContents.send('onedrive-device-code', info)
-  })
-  return res.ok ? { success: true, account: res.account } : { success: false, error: res.error }
+  try {
+    const res = await startDeviceLogin((info) => {
+      mainWindow?.webContents.send('onedrive-device-code', info)
+    })
+    return res.ok ? { success: true, account: res.account } : { success: false, error: res.error }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
 })
 
 ipcMain.handle('onedrive-cancel-connect', async () => { cancelDeviceLogin(); return { success: true } })
-ipcMain.handle('onedrive-disconnect', async () => { onedriveDisconnect(); return { success: true } })
+ipcMain.handle('onedrive-disconnect', async () => {
+  onedriveDisconnect()
+  // 重置远端 tag 缓存，避免断开后切换 provider 时 sync-periodic 错误短路
+  lastRemoteTag = null
+  return { success: true }
+})
 
 ipcMain.handle('open-external', async (_e, url: string) => {
   try { await shell.openExternal(url); return { success: true } } catch (err) { return { success: false, error: String(err) } }

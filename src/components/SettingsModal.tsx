@@ -290,6 +290,7 @@ export default function SettingsModal() {
   const handleDisconnectOneDrive = useCallback(async () => {
     await window.electronAPI.onedriveCancelConnect()
     await window.electronAPI.onedriveDisconnect()
+    useStore.getState().setSyncProvider('none')
     setOdStatus({ configured: true, connected: false })
     setOdDeviceCode(null)
   }, [])
@@ -371,6 +372,7 @@ export default function SettingsModal() {
 
   const handleDisconnect = useCallback(() => {
     setWebDAVConfig(undefined)
+    useStore.getState().setSyncProvider('none')
     setSyncDecision(null)
     useStore.getState().setSyncStatus('idle')
     setConnected(false)

@@ -27,6 +27,7 @@ function saveRefreshToken(rt: string) {
     if (!fs.existsSync(path.dirname(tokenFilePath))) fs.mkdirSync(path.dirname(tokenFilePath), { recursive: true })
     const enc = safeStorage.isEncryptionAvailable()
       ? safeStorage.encryptString(rt)
+      // safeStorage 不可用时（如无 keyring 的 Linux 环境）降级为明文存储，属 Electron 既有模型权衡
       : Buffer.from(rt, 'utf-8')
     fs.writeFileSync(tokenFilePath, enc)
   } catch (err) { console.error('saveRefreshToken failed:', err) }
@@ -36,6 +37,7 @@ function readRefreshToken(): string | null {
   try {
     if (!tokenFilePath || !fs.existsSync(tokenFilePath)) return null
     const buf = fs.readFileSync(tokenFilePath)
+    // safeStorage 不可用时（如无 keyring 的 Linux 环境）降级为明文读取，属 Electron 既有模型权衡
     return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf-8')
   } catch { return null }
 }
@@ -73,12 +75,17 @@ export async function getAccessToken(): Promise<string> {
     }),
   })
   const json = await resp.json()
-  if (!resp.ok || !json.access_token) {
+  if (resp.ok && json.access_token) {
+    await setTokensFromResponse(json)
+    return accessToken!
+  }
+  // 仅确定的授权失效（HTTP 400 + invalid_grant/invalid_client）时才删除 token
+  if (resp.status === 400 && (json.error === 'invalid_grant' || json.error === 'invalid_client')) {
     disconnect()
     throw new Error('OneDrive 登录已失效，请重新连接')
   }
-  await setTokensFromResponse(json)
-  return accessToken!
+  // 5xx / 429 / 其他非授权错误：不删 token，让下次同步重试
+  throw new Error(`OneDrive 刷新令牌失败（${resp.status}），稍后重试`)
 }
 
 export async function loadAccount(): Promise<string | undefined> {
@@ -93,12 +100,18 @@ export async function loadAccount(): Promise<string | undefined> {
 
 export async function startDeviceLogin(onCode: (info: DeviceCodeInfo) => void): Promise<{ ok: true; account?: string } | { ok: false; error: string }> {
   cancelled = false
-  const dcResp = await fetch(`${ONEDRIVE_AUTHORITY}/oauth2/v2.0/devicecode`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form({ client_id: ONEDRIVE_CLIENT_ID, scope: ONEDRIVE_SCOPES }),
-  })
-  const dc = await dcResp.json()
+  let dcResp: Response
+  let dc: any
+  try {
+    dcResp = await fetch(`${ONEDRIVE_AUTHORITY}/oauth2/v2.0/devicecode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form({ client_id: ONEDRIVE_CLIENT_ID, scope: ONEDRIVE_SCOPES }),
+    })
+    dc = await dcResp.json()
+  } catch {
+    return { ok: false, error: '网络错误，请检查网络后重试' }
+  }
   if (!dcResp.ok || !dc.device_code) {
     return { ok: false, error: dc.error_description || '获取设备码失败' }
   }
@@ -115,16 +128,23 @@ export async function startDeviceLogin(onCode: (info: DeviceCodeInfo) => void): 
     if (cancelled) return { ok: false, error: 'cancelled' }
     await new Promise((r) => setTimeout(r, interval))
     if (cancelled) return { ok: false, error: 'cancelled' }
-    const tResp = await fetch(`${ONEDRIVE_AUTHORITY}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form({
-        client_id: ONEDRIVE_CLIENT_ID,
-        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        device_code: dc.device_code,
-      }),
-    })
-    const tJson = await tResp.json()
+    let tResp: Response
+    let tJson: any
+    try {
+      tResp = await fetch(`${ONEDRIVE_AUTHORITY}/oauth2/v2.0/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: form({
+          client_id: ONEDRIVE_CLIENT_ID,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+          device_code: dc.device_code,
+        }),
+      })
+      tJson = await tResp.json()
+    } catch {
+      // 网络瞬时错误，继续轮询直到 deadline
+      continue
+    }
     if (tResp.ok && tJson.access_token) {
       await setTokensFromResponse(tJson)
       const account = await loadAccount()
