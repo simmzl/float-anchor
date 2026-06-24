@@ -15,8 +15,8 @@ const MAX_SCALE = 3
 // 右键菜单快捷键标记。注意：键位若改动，需与本文件 keydown effect 中的分发保持一致。
 const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 const SC = IS_MAC
-  ? { card: 'C', text: 'T', section: 'R', arrange: '⌘⇧A', edit: '⏎', del: '⌫' }
-  : { card: 'C', text: 'T', section: 'R', arrange: 'Ctrl+Shift+A', edit: 'Enter', del: 'Del' }
+  ? { card: 'C', text: 'T', section: 'R', arrange: '⌘⇧L', edit: '⏎', del: '⌫' }
+  : { card: 'C', text: 'T', section: 'R', arrange: 'Ctrl+Shift+L', edit: 'Enter', del: 'Del' }
 const VIEWPORT_PADDING = 800
 const CULL_THROTTLE = 50
 
@@ -733,7 +733,7 @@ export default function CanvasView() {
         textIds: [...selection.textIds],
       })
 
-      if (mod && e.shiftKey && k === 'a') {
+      if (mod && e.shiftKey && k === 'l') {
         e.preventDefault()
         arrangeUnits(selIds())
         return
