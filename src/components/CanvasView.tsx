@@ -12,6 +12,11 @@ import type { MenuItem } from './ContextMenu'
 
 const MIN_SCALE = 0.15
 const MAX_SCALE = 3
+// 右键菜单快捷键标记。注意：键位若改动，需与本文件 keydown effect 中的分发保持一致。
+const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+const SC = IS_MAC
+  ? { card: 'C', text: 'T', section: 'R', arrange: '⌘⇧A', edit: '⏎', del: '⌫' }
+  : { card: 'C', text: 'T', section: 'R', arrange: 'Ctrl+Shift+A', edit: 'Enter', del: 'Del' }
 const VIEWPORT_PADDING = 800
 const CULL_THROTTLE = 50
 
@@ -816,6 +821,7 @@ export default function CanvasView() {
         items: [
           {
             label: '自动排布',
+            shortcut: SC.arrange,
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
             onClick: () => arrangeUnits({
               cardIds: [...selection.cardIds],
@@ -889,11 +895,13 @@ export default function CanvasView() {
           },
           {
             label: '编辑',
+            shortcut: SC.edit,
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>,
             onClick: () => setEditingCard(cardId),
           },
           {
             label: '删除',
+            shortcut: SC.del,
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>,
             danger: true,
             onClick: () => deleteCard(cardId),
@@ -925,6 +933,7 @@ export default function CanvasView() {
           items: [
             {
               label: '创建空白卡片',
+              shortcut: SC.card,
               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="3" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>,
               onClick: () => addCard(coords.x, coords.y),
             },
@@ -935,11 +944,13 @@ export default function CanvasView() {
             },
             {
               label: '创建文本',
+              shortcut: SC.text,
               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="14" y2="17" /></svg>,
               onClick: () => addText(coords.x, coords.y),
             },
             {
               label: '创建分区',
+              shortcut: SC.section,
               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="4 2" /></svg>,
               onClick: () => addSection(coords.x, coords.y),
             },
