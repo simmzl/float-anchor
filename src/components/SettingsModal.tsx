@@ -31,6 +31,7 @@ export default function SettingsModal() {
   const handleMigrateImages = useCallback(async () => {
     setMigrateStatus('running'); setMigrateMessage('')
     try {
+      await useStore.getState().flushPendingSave()
       const res = await window.electronAPI.migrateEmbeddedImages()
       if (res.success) {
         await useStore.getState().loadData()

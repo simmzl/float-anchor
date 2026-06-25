@@ -32,6 +32,7 @@ interface AppState {
   setSyncStatus: (s: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning', error?: string | null) => void
   setSyncDecision: (decision: WebDAVSyncDecision | null) => void
   refreshImageCache: () => void
+  flushPendingSave: () => Promise<void>
 
   addCanvas: (name: string) => void
   deleteCanvas: (id: string) => void
@@ -221,6 +222,12 @@ export const useStore = create<AppState>((set, get) => ({
   setSyncDecision: (decision) => set({ syncDecision: decision }),
 
   refreshImageCache: () => set((s) => ({ imageCacheVersion: s.imageCacheVersion + 1 })),
+
+  flushPendingSave: async () => {
+    clearTimeout(saveTimer)
+    const { canvases, activeCanvasId } = get()
+    await window.electronAPI.writeData({ canvases, activeCanvasId })
+  },
 
   addCanvas: (name) => {
     const canvas: Canvas = { id: uuid(), name, cards: [] }
