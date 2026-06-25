@@ -6,6 +6,7 @@ import { exec } from 'node:child_process'
 import archiver from 'archiver'
 import AdmZip from 'adm-zip'
 import { extractStoredImageName } from './sync/image-names'
+import { resolveExt, hashName, rewriteEmbeddedImages } from './sync/image-store'
 import { createNodeLocalStore } from './sync/local-store'
 import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
@@ -460,6 +461,51 @@ function getLocalStore(): LocalStore {
     maxBackups: 5,
   })
 }
+
+function saveImageBytes(buf: Buffer, mime?: string): string {
+  const { dataDir } = getDataPaths()
+  const imagesDir = path.join(dataDir, 'images')
+  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true })
+  const ext = resolveExt(mime, buf)
+  const name = hashName(buf, ext)
+  const dest = path.join(imagesDir, name)
+  if (!fs.existsSync(dest)) fs.writeFileSync(dest, buf)
+  return name
+}
+
+ipcMain.handle('save-image', async (_e, bytes: ArrayBuffer, mime?: string) => {
+  try {
+    return { name: saveImageBytes(Buffer.from(bytes), mime) }
+  } catch (err) {
+    return { error: String(err) }
+  }
+})
+
+ipcMain.handle('migrate-embedded-images', async () => {
+  try {
+    const { dataFile } = getDataPaths()
+    if (!fs.existsSync(dataFile)) return { success: false, error: '无数据文件' }
+    const raw = fs.readFileSync(dataFile, 'utf-8')
+    const beforeBytes = Buffer.byteLength(raw, 'utf-8')
+    getLocalStore().backup()
+    const data = JSON.parse(raw)
+    let count = 0
+    for (const canvas of data?.canvases || []) {
+      for (const card of canvas?.cards || []) {
+        if (typeof card?.content === 'string' && card.content.includes('data:image/')) {
+          const { content, extracted } = rewriteEmbeddedImages(card.content, saveImageBytes)
+          card.content = content
+          count += extracted
+        }
+      }
+    }
+    const newRaw = JSON.stringify(data, null, 2)
+    fs.writeFileSync(dataFile, newRaw, 'utf-8')
+    return { success: true, count, beforeBytes, afterBytes: Buffer.byteLength(newRaw, 'utf-8') }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+})
 
 function readSettingsSync(): { theme?: string; webdav?: { server: string; username: string; password: string }; syncProvider?: string; github?: { repo: string; branch?: string } } | null {
   try {

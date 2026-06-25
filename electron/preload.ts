@@ -45,4 +45,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
   githubHasToken: () => ipcRenderer.invoke('github-has-token'),
   githubAccount: () => ipcRenderer.invoke('github-account'),
+  saveImage: (bytes: ArrayBuffer, mime?: string) => ipcRenderer.invoke('save-image', bytes, mime),
+  migrateEmbeddedImages: () => ipcRenderer.invoke('migrate-embedded-images'),
 })
