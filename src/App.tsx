@@ -59,7 +59,7 @@ export default function App() {
   ) => {
     const store = useStore.getState()
     if (!res.success) {
-      store.setSyncStatus('error')
+      store.setSyncStatus('error', res.error)
       return
     }
 

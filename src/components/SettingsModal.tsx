@@ -231,7 +231,7 @@ export default function SettingsModal() {
   const applySyncResult = useCallback(async (syncRes: WebDAVSyncResult) => {
     const store = useStore.getState()
     if (!syncRes.success) {
-      store.setSyncStatus('error')
+      store.setSyncStatus('error', syncRes.error)
       return
     }
 

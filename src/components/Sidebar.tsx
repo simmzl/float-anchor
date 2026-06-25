@@ -180,7 +180,6 @@ export default function Sidebar({ width }: { width?: number }) {
           </svg>
           <span>FloatAnchor</span>
         </div>
-        <SyncStatusIndicator />
         <button
           className="settings-gear"
           onClick={() => useStore.getState().setShowSettings(true)}
@@ -289,6 +288,7 @@ export default function Sidebar({ width }: { width?: number }) {
             <span>新建画布</span>
           </button>
         )}
+        <SyncStatusIndicator />
       </div>
     </aside>
   )

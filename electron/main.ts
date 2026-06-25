@@ -504,6 +504,19 @@ async function refreshRemoteTag(adapter: RemoteAdapter): Promise<void> {
   try { lastRemoteTag = await adapter.getRemoteTag() } catch { /* 出错保留旧值 */ }
 }
 
+// 把底层错误映射成精简中文原因，供界面直接展示。
+function describeSyncError(err: any): string {
+  const status = err?.status ?? err?.response?.status
+  const msg = String(err?.message ?? err ?? '')
+  if (status === 403 || /\b403\b|TrafficRateExhausted/i.test(msg)) return '坚果云流量/请求超限，请稍后再试（约 6 小时后恢复）'
+  if (status === 401 || /\b401\b|Unauthorized/i.test(msg)) return '账号或应用密码不正确'
+  if (status === 507 || /insufficient storage|quota/i.test(msg)) return '云端空间不足'
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ECONNRESET|getaddrinfo|fetch failed|network/i.test(msg)) return '网络连接失败，请检查网络'
+  if (msg.includes('未配置同步')) return '未配置同步'
+  const clean = msg.replace(/^Error:\s*/, '').trim()
+  return clean ? `同步失败：${clean.slice(0, 60)}` : '同步失败'
+}
+
 async function runSync() {
   const adapter = getActiveAdapter()
   if (!adapter) return { success: false, error: '未配置同步' }
@@ -533,13 +546,14 @@ ipcMain.handle('sync-auto', async () => enqueueSync(async () => {
     }
     return result
   } catch (err) {
-    mainWindow?.webContents.send('sync-status', { status: 'error', error: String(err) })
-    return { success: false, error: String(err) }
+    const error = describeSyncError(err)
+    mainWindow?.webContents.send('sync-status', { status: 'error', error })
+    return { success: false, error }
   }
 }))
 
 ipcMain.handle('sync-startup', async () => enqueueSync(async () => {
-  try { return await runSync() } catch (err) { return { success: false, error: String(err) } }
+  try { return await runSync() } catch (err) { return { success: false, error: describeSyncError(err) } }
 }))
 
 ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
@@ -547,7 +561,7 @@ ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
   try {
     return await runSync()
   } catch (err) {
-    return { success: false, error: String(err) }
+    return { success: false, error: describeSyncError(err) }
   }
 }))
 
@@ -560,8 +574,9 @@ ipcMain.handle('sync-resolve-conflict', async (_e, resolution: 'keep-local' | 'u
     if (result.success) mainWindow?.webContents.send('sync-status', { status: 'success' })
     return result
   } catch (err) {
-    mainWindow?.webContents.send('sync-status', { status: 'error', error: String(err) })
-    return { success: false, error: String(err) }
+    const error = describeSyncError(err)
+    mainWindow?.webContents.send('sync-status', { status: 'error', error })
+    return { success: false, error }
   }
 }))
 

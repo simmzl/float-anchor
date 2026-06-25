@@ -16,6 +16,7 @@ interface AppState {
   loaded: boolean
   settings: AppSettings
   syncStatus: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning'
+  syncError: string | null
   syncDecision: WebDAVSyncDecision | null
   imageCacheVersion: number
   showSettings: boolean
@@ -28,7 +29,7 @@ interface AppState {
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
   setSyncProvider: (p: SyncProvider) => void
   setShowSettings: (v: boolean) => void
-  setSyncStatus: (s: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning') => void
+  setSyncStatus: (s: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning', error?: string | null) => void
   setSyncDecision: (decision: WebDAVSyncDecision | null) => void
   refreshImageCache: () => void
 
@@ -90,6 +91,7 @@ export const useStore = create<AppState>((set, get) => ({
   loaded: false,
   settings: { theme: 'light' },
   syncStatus: 'idle',
+  syncError: null,
   syncDecision: null,
   imageCacheVersion: 0,
   showSettings: false,
@@ -136,16 +138,16 @@ export const useStore = create<AppState>((set, get) => ({
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
         if (getEffectiveProvider(settings) !== 'none' && !syncDecision) {
-          set({ syncStatus: 'pending' })
+          set({ syncStatus: 'pending', syncError: null })
           clearTimeout(syncTimer)
           const sinceLast = Date.now() - lastRemoteUploadAt
           const delay = Math.max(LOCAL_WEBDAV_SYNC_DELAY_MS, MIN_REMOTE_UPLOAD_INTERVAL_MS - sinceLast)
           syncTimer = setTimeout(() => {
-            set({ syncStatus: 'syncing' })
+            set({ syncStatus: 'syncing', syncError: null })
             window.electronAPI.syncAuto().then(async (res) => {
               if (!res.success) {
                 // 失败时不更新 lastRemoteUploadAt，使下次编辑可较快重试（delay 退化为 2s）
-                set({ syncStatus: 'error' })
+                set({ syncStatus: 'error', syncError: res.error ?? '同步失败' })
                 return
               }
               if (res.action === 'needs-confirmation' && res.decision) {
@@ -174,7 +176,7 @@ export const useStore = create<AppState>((set, get) => ({
                 return
               }
               set({ syncStatus: 'idle', syncDecision: null })
-            }).catch(() => set({ syncStatus: 'error' }))
+            }).catch(() => set({ syncStatus: 'error', syncError: '同步失败' }))
           }, delay)
         }
       })
@@ -214,7 +216,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   setShowSettings: (v) => set({ showSettings: v }),
 
-  setSyncStatus: (s) => set({ syncStatus: s }),
+  setSyncStatus: (s, error = null) => set({ syncStatus: s, syncError: s === 'error' ? (error ?? '同步失败') : null }),
 
   setSyncDecision: (decision) => set({ syncDecision: decision }),
 

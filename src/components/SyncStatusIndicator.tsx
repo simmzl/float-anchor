@@ -11,21 +11,24 @@ const META: Record<string, { dot: string; label: string }> = {
 
 export default function SyncStatusIndicator() {
   const syncStatus = useStore((s) => s.syncStatus)
+  const syncError = useStore((s) => s.syncError)
   const provider = useStore((s) => getEffectiveProvider(s.settings))
   if (provider === 'none') return null
 
   const meta = META[syncStatus] ?? META.idle
   const clickable = syncStatus === 'error' || syncStatus === 'warning'
+  const isError = syncStatus === 'error'
+  const label = isError ? (syncError || meta.label) : meta.label
 
   return (
     <button
-      className={`sync-indicator${clickable ? ' clickable' : ''}`}
-      title={`同步状态：${meta.label}`}
+      className={`sync-indicator${clickable ? ' clickable' : ''}${isError ? ' error' : ''}`}
+      title={isError ? (syncError || '同步失败') : `同步状态：${meta.label}`}
       onClick={clickable ? () => useStore.getState().setShowSettings(true) : undefined}
       disabled={!clickable}
     >
       <span className={`sync-dot ${meta.dot}`} />
-      <span className="sync-indicator-label">{meta.label}</span>
+      <span className="sync-indicator-label">{label}</span>
     </button>
   )
 }
