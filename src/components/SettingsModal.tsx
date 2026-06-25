@@ -20,9 +20,33 @@ export default function SettingsModal() {
   const [clearInput, setClearInput] = useState('')
   const [clearStatus, setClearStatus] = useState<'idle' | 'preparing' | 'no-backup' | 'ready' | 'clearing' | 'done'>('idle')
   const [clearMessage, setClearMessage] = useState('')
+  const [migrateStatus, setMigrateStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [migrateMessage, setMigrateMessage] = useState('')
 
   const CLEAR_CONFIRM_TEXT = '我已明确该操作会清空所有内容，执行'
   const formatBackupTime = (ts?: number) => ts ? new Date(ts).toLocaleString('zh-CN') : '未知时间'
+
+  const fmtKB = (b?: number) => b == null ? '?' : (b / 1024 >= 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`)
+
+  const handleMigrateImages = useCallback(async () => {
+    setMigrateStatus('running'); setMigrateMessage('')
+    try {
+      const res = await window.electronAPI.migrateEmbeddedImages()
+      if (res.success) {
+        await useStore.getState().loadData()
+        useStore.getState().refreshImageCache()
+        setMigrateStatus('done')
+        setMigrateMessage(res.count ? `已提取 ${res.count} 张内嵌图，数据从 ${fmtKB(res.beforeBytes)} 缩到 ${fmtKB(res.afterBytes)}` : '没有发现内嵌图片')
+        setTimeout(() => { setMigrateStatus('idle'); setMigrateMessage('') }, 8000)
+      } else {
+        setMigrateStatus('error'); setMigrateMessage(res.error || '提取失败')
+        setTimeout(() => { setMigrateStatus('idle'); setMigrateMessage('') }, 6000)
+      }
+    } catch {
+      setMigrateStatus('error'); setMigrateMessage('提取时发生错误')
+      setTimeout(() => { setMigrateStatus('idle'); setMigrateMessage('') }, 6000)
+    }
+  }, [])
 
   const handleExport = useCallback(async () => {
     setBackupStatus('exporting')
@@ -687,6 +711,15 @@ export default function SettingsModal() {
               <div className={`data-message ${importStatus === 'error' ? 'error' : 'success'}`}>
                 {importMessage}
               </div>
+            )}
+            <div className="data-management-item">
+              <button className="data-btn" onClick={handleMigrateImages} disabled={migrateStatus === 'running'}>
+                {migrateStatus === 'running' ? '提取中...' : '提取内嵌图片为文件'}
+              </button>
+              <span className="data-hint">把笔记里 base64 内嵌的图片抽成本地文件，显著减小数据体积</span>
+            </div>
+            {migrateMessage && (
+              <div className={`data-message ${migrateStatus === 'error' ? 'error' : 'success'}`}>{migrateMessage}</div>
             )}
             <div className="data-management-danger">
               <button
