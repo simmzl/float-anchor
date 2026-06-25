@@ -7,6 +7,29 @@ export function getEffectiveProvider(settings: AppSettings): SyncProvider {
   return settings.syncProvider ?? (settings.webdav?.server ? 'webdav' : 'none')
 }
 
+interface SnapRect { x: number; y: number; width: number; height: number }
+
+// 判断卡片 cd 是否真正"贴靠"在 member 旁边：在一个轴方向上贴合（边缘吻合或相隔一个 GAP），
+// 且在另一个轴方向上有实际重叠。仅单轴边缘吻合（如只有 x 对齐、y 却相距很远）不算贴靠——
+// 否则磁吸把卡片吸到远处分区成员的同列/同行坐标后，那个远分区会误判并拉伸过来框住卡片。
+export function isCardSnappedAdjacent(cd: SnapRect, member: SnapRect, gap: number, tol = 1): boolean {
+  const cR = cd.x + cd.width, cB = cd.y + cd.height
+  const mR = member.x + member.width, mB = member.y + member.height
+  const overlapsX = Math.min(cR, mR) - Math.max(cd.x, member.x) > tol
+  const overlapsY = Math.min(cB, mB) - Math.max(cd.y, member.y) > tol
+  const touchH =
+    Math.abs(cd.x - (mR + gap)) < tol ||
+    Math.abs(cR - (member.x - gap)) < tol ||
+    Math.abs(cd.x - member.x) < tol ||
+    Math.abs(cR - mR) < tol
+  const touchV =
+    Math.abs(cd.y - member.y) < tol ||
+    Math.abs(cB - mB) < tol ||
+    Math.abs(cd.y - (mB + gap)) < tol ||
+    Math.abs(cB - (member.y - gap)) < tol
+  return (touchH && overlapsY) || (touchV && overlapsX)
+}
+
 interface AppState {
   canvases: Canvas[]
   activeCanvasId: string | null
@@ -453,21 +476,14 @@ export const useStore = create<AppState>((set, get) => ({
     const snappedToMemberOf = (cd: Card, sec: Section): boolean => {
       const members = sec.cardIds ?? []
       if (members.length === 0) return false
+      const cdRect = { x: cd.x, y: cd.y, width: cd.width, height: cd.height ?? 300 }
       for (const mId of members) {
         if (mId === cd.id) continue
         const member = canvas.cards.find((c) => c.id === mId)
         if (!member) continue
-        const mW = member.width; const mH = member.height ?? 300
-        const cW = cd.width; const cH = cd.height ?? 300
-        const touchH = (Math.abs(cd.x - (member.x + mW + GAP)) < 1) ||
-                      (Math.abs((cd.x + cW) - (member.x - GAP)) < 1) ||
-                      (Math.abs(cd.x - member.x) < 1) ||
-                      (Math.abs((cd.x + cW) - (member.x + mW)) < 1)
-        const touchV = (Math.abs(cd.y - member.y) < 1) ||
-                      (Math.abs((cd.y + cH) - (member.y + mH)) < 1) ||
-                      (Math.abs(cd.y - (member.y + mH + GAP)) < 1) ||
-                      (Math.abs((cd.y + cH) - (member.y - GAP)) < 1)
-        if (touchH || touchV) return true
+        const mRect = { x: member.x, y: member.y, width: member.width, height: member.height ?? 300 }
+        // 需一轴贴合 + 另一轴有重叠，避免远处分区因单轴对齐被误判贴靠并拉伸
+        if (isCardSnappedAdjacent(cdRect, mRect, GAP)) return true
       }
       return false
     }
