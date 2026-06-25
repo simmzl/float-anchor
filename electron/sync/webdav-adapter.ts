@@ -57,7 +57,15 @@ export function createWebDAVAdapter(config: { server: string; username: string; 
       return {}
     },
     async getRemoteTag() {
-      return null // WebDAV 退回 _syncTimestamp 逻辑
+      // 用一个轻量 PROPFIND(stat) 拿文件 ETag/Last-Modified，避免周期同步每次下整份快照。
+      // 不存在或出错 → 返回 null，调用方退回完整 reconcile。
+      try {
+        const client = await getClient()
+        const st = await client.stat(WEBDAV_REMOTE_FILE) as { etag?: string | null; lastmod?: string }
+        return st.etag || st.lastmod || null
+      } catch {
+        return null
+      }
     },
     async listRemoteImages(): Promise<RemoteImageEntry[]> {
       const client = await getClient()

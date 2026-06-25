@@ -495,10 +495,21 @@ ipcMain.handle('sync-test', async (_e, config: { server: string; username: strin
   return r.ok ? { success: true } : { success: false, error: r.error }
 })
 
+let lastRemoteTag: string | null = null
+
+// 用当前远端标签刷新缓存，使周期同步「远端没变就跳过下载整份快照」的短路生效。
+// 任何同步(上传/下载/解决冲突)后都调用——上传会改变远端 ETag，刷新后下次轮询才不会误判为变更而重下整份。
+async function refreshRemoteTag(adapter: RemoteAdapter): Promise<void> {
+  if (!adapter.getRemoteTag) { lastRemoteTag = null; return }
+  try { lastRemoteTag = await adapter.getRemoteTag() } catch { /* 出错保留旧值 */ }
+}
+
 async function runSync() {
   const adapter = getActiveAdapter()
   if (!adapter) return { success: false, error: '未配置同步' }
-  return reconcileState(adapter, getLocalStore())
+  const result = await reconcileState(adapter, getLocalStore())
+  await refreshRemoteTag(adapter)
+  return result
 }
 
 ipcMain.handle('sync-auto', async () => enqueueSync(async () => {
@@ -522,8 +533,6 @@ ipcMain.handle('sync-startup', async () => enqueueSync(async () => {
   try { return await runSync() } catch (err) { return { success: false, error: String(err) } }
 }))
 
-let lastRemoteTag: string | null = null
-
 ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
   try {
     const adapter = getActiveAdapter()
@@ -533,14 +542,15 @@ ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
       const store = getLocalStore()
       const local = store.readSnapshot()
       const localDirty = !!local && store.getModifiedAt() > (local._syncTimestamp || 0) + LOCAL_SYNC_DIRTY_TOLERANCE_MS
+      // 远端未变(ETag 相同)且本地不脏 → 跳过整份快照下载，仅花一个 PROPFIND
       if (tag && tag === lastRemoteTag && !localDirty) {
         return { success: true, action: 'up-to-date' }
       }
       const result = await reconcileState(adapter, store)
-      lastRemoteTag = tag
+      await refreshRemoteTag(adapter)
       return result
     }
-    return reconcileState(adapter, getLocalStore())
+    return runSync()
   } catch (err) {
     return { success: false, error: String(err) }
   }
@@ -551,6 +561,7 @@ ipcMain.handle('sync-resolve-conflict', async (_e, resolution: 'keep-local' | 'u
     const adapter = getActiveAdapter()
     if (!adapter) return { success: false, error: '未配置同步' }
     const result = await resolveConflict(adapter, getLocalStore(), resolution)
+    await refreshRemoteTag(adapter)
     if (result.success) mainWindow?.webContents.send('sync-status', { status: 'success' })
     return result
   } catch (err) {
