@@ -9,9 +9,6 @@ import { extractStoredImageName } from './sync/image-names'
 import { createNodeLocalStore } from './sync/local-store'
 import { reconcileState, resolveConflict, LOCAL_SYNC_DIRTY_TOLERANCE_MS } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
-import { createOneDriveAdapter } from './sync/onedrive-adapter'
-import { initOneDriveAuth, startDeviceLogin, cancelDeviceLogin, disconnect as onedriveDisconnect, isConnected as onedriveConnected, loadAccount } from './sync/onedrive-auth'
-import { isOneDriveConfigured } from './sync/onedrive-config'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
 let dataDir = ''
@@ -479,9 +476,6 @@ function getActiveAdapter(): RemoteAdapter | null {
   if (provider === 'webdav' && settings?.webdav?.server) {
     return createWebDAVAdapter(settings.webdav)
   }
-  if (provider === 'onedrive' && isOneDriveConfigured() && onedriveConnected()) {
-    return createOneDriveAdapter()
-  }
   return null
 }
 
@@ -826,39 +820,6 @@ ipcMain.on('win-close', (e) => {
   BrowserWindow.fromWebContents(e.sender)?.close()
 })
 
-/* ===== OneDrive IPC ===== */
-
-ipcMain.handle('onedrive-status', async () => {
-  const configured = isOneDriveConfigured()
-  const connected = configured && onedriveConnected()
-  const account = connected ? await loadAccount() : undefined
-  return { configured, connected, account }
-})
-
-ipcMain.handle('onedrive-connect', async () => {
-  if (!isOneDriveConfigured()) return { success: false, error: '未配置 OneDrive Client ID' }
-  try {
-    const res = await startDeviceLogin((info) => {
-      mainWindow?.webContents.send('onedrive-device-code', info)
-    })
-    return res.ok ? { success: true, account: res.account } : { success: false, error: res.error }
-  } catch (err) {
-    return { success: false, error: String(err) }
-  }
-})
-
-ipcMain.handle('onedrive-cancel-connect', async () => { cancelDeviceLogin(); return { success: true } })
-ipcMain.handle('onedrive-disconnect', async () => {
-  onedriveDisconnect()
-  // 重置远端 tag 缓存，避免断开后切换 provider 时 sync-periodic 错误短路
-  lastRemoteTag = null
-  return { success: true }
-})
-
-ipcMain.handle('open-external', async (_e, url: string) => {
-  try { await shell.openExternal(url); return { success: true } } catch (err) { return { success: false, error: String(err) } }
-})
-
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fa-image', privileges: { standard: true, secure: true, bypassCSP: true, supportFetchAPI: true, stream: true } },
   { scheme: 'fa-img', privileges: { standard: true, secure: true, bypassCSP: true, supportFetchAPI: true, stream: true } },
@@ -896,7 +857,6 @@ app.whenReady().then(() => {
     }
   })
 
-  initOneDriveAuth(path.join(getDataPaths().dataDir, 'onedrive-token.bin'))
   createWindow()
   startUpdateChecker()
 })

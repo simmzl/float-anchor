@@ -212,12 +212,6 @@ export default function SettingsModal() {
   const [connected, setConnected] = useState(!!settings.webdav?.server)
   const [syncResolveLoading, setSyncResolveLoading] = useState<WebDAVSyncResolution | null>(null)
 
-  // OneDrive 状态
-  const [odStatus, setOdStatus] = useState<{ configured: boolean; connected: boolean; account?: string }>({ configured: false, connected: false })
-  const [odDeviceCode, setOdDeviceCode] = useState<{ userCode: string; verificationUri: string } | null>(null)
-  const [odConnecting, setOdConnecting] = useState(false)
-  const [odError, setOdError] = useState('')
-
   const formatSyncSummary = useCallback((summary: WebDAVSyncSummary) => {
     return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线 / ${summary.textCount} 个文本框`
   }, [])
@@ -232,15 +226,6 @@ export default function SettingsModal() {
         useStore.getState().setSyncStatus('idle')
       }
     }, 3000)
-  }, [])
-
-  // OneDrive 初始化 + 设备码监听
-  useEffect(() => {
-    window.electronAPI.onedriveStatus().then(setOdStatus)
-    const unsub = window.electronAPI.onOneDriveDeviceCode((info) => {
-      setOdDeviceCode({ userCode: info.userCode, verificationUri: info.verificationUri })
-    })
-    return unsub
   }, [])
 
   const applySyncResult = useCallback(async (syncRes: WebDAVSyncResult) => {
@@ -270,30 +255,6 @@ export default function SettingsModal() {
 
     store.setSyncStatus('idle')
   }, [markSyncSuccess])
-
-  const handleConnectOneDrive = useCallback(async () => {
-    setOdError(''); setOdConnecting(true); setOdDeviceCode(null)
-    try {
-      const res = await window.electronAPI.onedriveConnect()
-      if (res.success) {
-        setOdStatus({ configured: true, connected: true, account: res.account })
-        useStore.getState().setSyncProvider('onedrive')
-        useStore.getState().setSyncStatus('syncing')
-        const sync = await window.electronAPI.syncAuto()
-        await applySyncResult(sync)
-      } else if (res.error !== 'cancelled') {
-        setOdError(res.error || '连接失败')
-      }
-    } finally { setOdConnecting(false); setOdDeviceCode(null) }
-  }, [applySyncResult])
-
-  const handleDisconnectOneDrive = useCallback(async () => {
-    await window.electronAPI.onedriveCancelConnect()
-    await window.electronAPI.onedriveDisconnect()
-    useStore.getState().setSyncProvider('none')
-    setOdStatus({ configured: true, connected: false })
-    setOdDeviceCode(null)
-  }, [])
 
   useEffect(() => {
     if (settings.webdav) {
@@ -385,8 +346,6 @@ export default function SettingsModal() {
     if (e.target === e.currentTarget) setShowSettings(false)
   }
 
-  const isAnyConnected = connected || odStatus.connected
-
   const syncLabel = syncStatus === 'syncing'
     ? '同步中...'
     : syncStatus === 'warning'
@@ -395,7 +354,7 @@ export default function SettingsModal() {
     ? '已同步'
     : syncStatus === 'error'
     ? '同步失败'
-    : isAnyConnected ? '已连接' : '未连接'
+    : connected ? '已连接' : '未连接'
 
   const syncDotClass = syncStatus === 'syncing'
     ? 'syncing'
@@ -403,7 +362,7 @@ export default function SettingsModal() {
     ? 'warning'
     : syncStatus === 'error'
     ? 'error'
-    : isAnyConnected ? 'connected' : ''
+    : connected ? 'connected' : ''
 
   return (
     <div className="settings-overlay" onClick={handleOverlayClick}>
@@ -511,12 +470,6 @@ export default function SettingsModal() {
               坚果云 WebDAV
             </button>
             <button
-              className={`provider-option ${syncProvider === 'onedrive' ? 'active' : ''}`}
-              onClick={() => useStore.getState().setSyncProvider('onedrive')}
-            >
-              OneDrive
-            </button>
-            <button
               className={`provider-option ${syncProvider === 'none' ? 'active' : ''}`}
               onClick={() => useStore.getState().setSyncProvider('none')}
             >
@@ -565,39 +518,6 @@ export default function SettingsModal() {
                   </>
                 )}
               </div>
-            </div>
-          )}
-
-          {syncProvider === 'onedrive' && (
-            <div className="onedrive-panel">
-              {!odStatus.configured ? (
-                <div className="data-message error">OneDrive 尚未配置 Client ID，请参见 docs/onedrive-setup.md</div>
-              ) : odStatus.connected ? (
-                <>
-                  <div className="onedrive-account">已连接：{odStatus.account || 'OneDrive 账号'}</div>
-                  <div className="webdav-actions">
-                    <button onClick={handleManualSync} disabled={syncStatus === 'syncing' || !!syncDecision}>同步</button>
-                    <button onClick={handleDisconnectOneDrive}>断开</button>
-                  </div>
-                  <div className="data-hint">版本历史请到 OneDrive 网页端「版本历史」查看与还原。</div>
-                </>
-              ) : odDeviceCode ? (
-                <div className="onedrive-devicecode">
-                  <p>打开 <b>{odDeviceCode.verificationUri}</b> 并输入代码：</p>
-                  <p className="device-code">{odDeviceCode.userCode}</p>
-                  <div className="webdav-actions">
-                    <button onClick={() => window.electronAPI.openExternal(odDeviceCode.verificationUri)}>打开授权页</button>
-                    <button onClick={handleDisconnectOneDrive}>取消</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="webdav-actions">
-                  <button className="primary" onClick={handleConnectOneDrive} disabled={odConnecting}>
-                    {odConnecting ? '等待授权...' : '连接 OneDrive'}
-                  </button>
-                </div>
-              )}
-              {odError && <div className="data-message error">{odError}</div>}
             </div>
           )}
 

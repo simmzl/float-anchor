@@ -76,13 +76,12 @@ export interface WebDAVConfig {
   password: string
 }
 
-export type SyncProvider = 'webdav' | 'onedrive' | 'none'
+export type SyncProvider = 'webdav' | 'none'
 
 export interface AppSettings {
   theme: 'light' | 'dark'
   webdav?: WebDAVConfig
   syncProvider?: SyncProvider
-  onedrive?: { connected: boolean; account?: string }
 }
 
 export interface WebDAVSyncSummary {
@@ -180,12 +179,6 @@ declare global {
       prepareClearAllData: () => Promise<PrepareClearResult>
       clearAllData: () => Promise<{ success: boolean; data?: AppData; error?: string }>
       getBackupDir: () => Promise<string>
-      onedriveStatus: () => Promise<{ configured: boolean; connected: boolean; account?: string }>
-      onedriveConnect: () => Promise<{ success: boolean; account?: string; error?: string }>
-      onedriveCancelConnect: () => Promise<{ success: boolean }>
-      onedriveDisconnect: () => Promise<{ success: boolean }>
-      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
-      onOneDriveDeviceCode: (cb: (info: { userCode: string; verificationUri: string; message: string; expiresIn: number }) => void) => () => void
     }
   }
 }

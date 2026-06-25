@@ -18,8 +18,4 @@ describe('getEffectiveProvider', () => {
     expect(getEffectiveProvider(settings)).toBe('none')
   })
 
-  it('显式 syncProvider=onedrive → onedrive', () => {
-    const settings: AppSettings = { theme: 'light', syncProvider: 'onedrive' }
-    expect(getEffectiveProvider(settings)).toBe('onedrive')
-  })
 })
