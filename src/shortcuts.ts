@@ -12,6 +12,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'text', label: '新建文本', mac: 'T', win: 'T' },
   { id: 'section', label: '新建分区', mac: 'R', win: 'R' },
   { id: 'arrange', label: '自动排布选中', mac: 'L', win: 'L' },
+  { id: 'compactSection', label: '分区最佳大小（选中分区）', mac: 'F', win: 'F' },
   { id: 'selectAll', label: '全选', mac: '⌘A', win: 'Ctrl+A' },
   { id: 'edit', label: '编辑选中（单选时）', mac: '⏎', win: 'Enter' },
   { id: 'delete', label: '删除选中', mac: '⌫', win: 'Del' },

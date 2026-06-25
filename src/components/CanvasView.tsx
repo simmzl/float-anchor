@@ -748,6 +748,12 @@ export default function CanvasView() {
       if (k === 't') { const p = viewportCenterCanvasCoords(); addText(p.x - 150, p.y - 20); return }
       if (k === 'r') { const p = viewportCenterCanvasCoords(); addSection(p.x - 300, p.y - 200); return }
       if (k === 'l') { e.preventDefault(); arrangeUnits(selIds()); return }
+      if (k === 'f') {
+        if (selection.sectionIds.size === 0) return
+        e.preventDefault()
+        for (const sid of selection.sectionIds) compactSection(sid)
+        return
+      }
 
       if (e.key === 'Enter') {
         const total = selection.cardIds.size + selection.labelIds.size + selection.sectionIds.size + selection.textIds.size
@@ -778,7 +784,7 @@ export default function CanvasView() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [connectingFrom, connections, deleteConnection, selection, confirmDelete, arrangeUnits, addCard, addText, addSection, setEditingCard, setEditingText, nudgeUnits, zoomAroundCenter, resetZoomAroundCenter, viewportCenterCanvasCoords])
+  }, [connectingFrom, connections, deleteConnection, selection, confirmDelete, arrangeUnits, compactSection, addCard, addText, addSection, setEditingCard, setEditingText, nudgeUnits, zoomAroundCenter, resetZoomAroundCenter, viewportCenterCanvasCoords])
 
   useEffect(() => {
     if (!connectingFrom) {
@@ -913,6 +919,7 @@ export default function CanvasView() {
           items: [
             {
               label: '分区最佳大小',
+              shortcut: scKey('compactSection'),
               icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>,
               onClick: () => compactSection(hitSection.id),
             },
@@ -1128,7 +1135,7 @@ export default function CanvasView() {
           style={{ transform: 'translate3d(0,0,0) scale(1)', transformOrigin: '0 0' }}
         >
           {sections.map((sec) => (
-            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} selected={selection.sectionIds.has(sec.id)} />
+            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} selected={selection.sectionIds.has(sec.id)} onSelect={(id) => setSelection({ ...emptySelection(), sectionIds: new Set([id]) })} />
           ))}
 
           {labels.map((label) => (
