@@ -9,6 +9,8 @@ import { extractStoredImageName } from './sync/image-names'
 import { createNodeLocalStore } from './sync/local-store'
 import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
+import { createGitHubAdapter } from './sync/github-adapter'
+import { initGitHubAuth, saveGitHubToken, readGitHubToken, clearGitHubToken, hasGitHubToken } from './sync/github-auth'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
 let dataDir = ''
@@ -459,7 +461,7 @@ function getLocalStore(): LocalStore {
   })
 }
 
-function readSettingsSync(): { theme?: string; webdav?: { server: string; username: string; password: string }; syncProvider?: string } | null {
+function readSettingsSync(): { theme?: string; webdav?: { server: string; username: string; password: string }; syncProvider?: string; github?: { repo: string; branch?: string } } | null {
   try {
     const { settingsFile: f } = getDataPaths()
     if (!fs.existsSync(f)) return null
@@ -475,6 +477,10 @@ function getActiveAdapter(): RemoteAdapter | null {
     ?? (settings?.webdav?.server ? 'webdav' : 'none')
   if (provider === 'webdav' && settings?.webdav?.server) {
     return createWebDAVAdapter(settings.webdav)
+  }
+  if (provider === 'github' && settings?.github?.repo && hasGitHubToken()) {
+    const token = readGitHubToken()
+    if (token) return createGitHubAdapter({ repo: settings.github.repo, token, branch: settings.github.branch })
   }
   return null
 }
@@ -508,8 +514,10 @@ async function refreshRemoteTag(adapter: RemoteAdapter): Promise<void> {
 function describeSyncError(err: any): string {
   const status = err?.status ?? err?.response?.status
   const msg = String(err?.message ?? err ?? '')
+  if (status === 401) return 'GitHub 令牌无效或权限不足'
+  if (status === 409 || status === 422) return '云端已更新，正在重新同步'
   if (status === 403 || /\b403\b|TrafficRateExhausted/i.test(msg)) return '坚果云流量/请求超限，请稍后再试（约 6 小时后恢复）'
-  if (status === 401 || /\b401\b|Unauthorized/i.test(msg)) return '账号或应用密码不正确'
+  if (/\b401\b|Unauthorized/i.test(msg)) return '账号或应用密码不正确'
   if (status === 507 || /insufficient storage|quota/i.test(msg)) return '云端空间不足'
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ECONNRESET|getaddrinfo|fetch failed|network/i.test(msg)) return '网络连接失败，请检查网络'
   if (msg.includes('未配置同步')) return '未配置同步'
@@ -878,6 +886,7 @@ app.whenReady().then(() => {
     }
   })
 
+  initGitHubAuth(path.join(getDataPaths().dataDir, 'github-token.bin'))
   createWindow()
   startUpdateChecker()
 })
@@ -893,4 +902,24 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
+})
+
+/* ===== GitHub IPC ===== */
+
+ipcMain.handle('github-test', async (_e, c: { repo: string; token: string; branch?: string }) => {
+  const r = await createGitHubAdapter(c).test()
+  return r.ok ? { success: true } : { success: false, error: r.error }
+})
+ipcMain.handle('github-save-token', async (_e, token: string) => { saveGitHubToken(token); return { success: true } })
+ipcMain.handle('github-clear-token', async () => { clearGitHubToken(); return { success: true } })
+ipcMain.handle('github-has-token', async () => ({ has: hasGitHubToken() }))
+ipcMain.handle('github-account', async () => {
+  const token = readGitHubToken()
+  if (!token) return { login: null }
+  try {
+    const resp = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } })
+    if (!resp.ok) return { login: null }
+    const u = await resp.json() as { login?: string }
+    return { login: u.login || null }
+  } catch { return { login: null } }
 })
