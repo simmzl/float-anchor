@@ -212,6 +212,21 @@ export default function SettingsModal() {
   const [connected, setConnected] = useState(!!settings.webdav?.server)
   const [syncResolveLoading, setSyncResolveLoading] = useState<WebDAVSyncResolution | null>(null)
 
+  // GitHub state
+  const [ghRepo, setGhRepo] = useState(settings.github?.repo || '')
+  const [ghBranch, setGhBranch] = useState(settings.github?.branch || 'main')
+  const [ghToken, setGhToken] = useState('')
+  const [ghConnected, setGhConnected] = useState(false)
+  const [ghAccount, setGhAccount] = useState<string | null>(null)
+  const [ghTest, setGhTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+
+  useEffect(() => {
+    window.electronAPI.githubHasToken().then((r) => {
+      setGhConnected(r.has)
+      if (r.has) window.electronAPI.githubAccount().then((a) => setGhAccount(a.login))
+    })
+  }, [])
+
   const formatSyncSummary = useCallback((summary: WebDAVSyncSummary) => {
     return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线 / ${summary.textCount} 个文本框`
   }, [])
@@ -255,6 +270,28 @@ export default function SettingsModal() {
 
     store.setSyncStatus('idle')
   }, [markSyncSuccess])
+
+  const handleGithubSave = useCallback(async () => {
+    if (!ghRepo.trim() || !ghToken.trim()) return
+    setGhTest('testing')
+    const res = await window.electronAPI.githubTest({ repo: ghRepo.trim(), token: ghToken.trim(), branch: ghBranch.trim() || 'main' })
+    if (!res.success) { setGhTest('fail'); setTimeout(() => setGhTest('idle'), 3000); return }
+    setGhTest('ok')
+    await window.electronAPI.githubSaveToken(ghToken.trim())
+    const s = { ...useStore.getState().settings, github: { repo: ghRepo.trim(), branch: ghBranch.trim() || 'main' } }
+    await useStore.getState().saveSettings(s)
+    useStore.getState().setSyncProvider('github')
+    setGhConnected(true); setGhToken('')
+    window.electronAPI.githubAccount().then((a) => setGhAccount(a.login))
+    useStore.getState().setSyncStatus('syncing')
+    window.electronAPI.syncAuto().then((r) => applySyncResult(r)).catch(() => useStore.getState().setSyncStatus('error', '同步失败'))
+  }, [applySyncResult, ghRepo, ghBranch, ghToken])
+
+  const handleGithubDisconnect = useCallback(async () => {
+    await window.electronAPI.githubClearToken()
+    useStore.getState().setSyncProvider('none')
+    setGhConnected(false); setGhAccount(null)
+  }, [])
 
   useEffect(() => {
     if (settings.webdav) {
@@ -470,12 +507,48 @@ export default function SettingsModal() {
               坚果云 WebDAV
             </button>
             <button
+              className={`provider-option ${syncProvider === 'github' ? 'active' : ''}`}
+              onClick={() => useStore.getState().setSyncProvider('github')}
+            >
+              GitHub
+            </button>
+            <button
               className={`provider-option ${syncProvider === 'none' ? 'active' : ''}`}
               onClick={() => useStore.getState().setSyncProvider('none')}
             >
               关闭
             </button>
           </div>
+
+          {syncProvider === 'github' && (
+            <div className="github-panel">
+              {ghConnected ? (
+                <>
+                  <div className="onedrive-account">已连接：{ghAccount || 'GitHub'} · {settings.github?.repo}</div>
+                  <div className="webdav-actions">
+                    <button onClick={handleManualSync} disabled={syncStatus === 'syncing' || !!syncDecision}>同步</button>
+                    <button onClick={handleGithubDisconnect}>断开</button>
+                  </div>
+                  <div className="data-hint">提交历史可在 GitHub 仓库网页查看。</div>
+                </>
+              ) : (
+                <>
+                  <div className="webdav-field"><label>仓库 (owner/repo)</label>
+                    <input value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="yourname/float-anchor-data" /></div>
+                  <div className="webdav-field"><label>分支</label>
+                    <input value={ghBranch} onChange={(e) => setGhBranch(e.target.value)} placeholder="main" /></div>
+                  <div className="webdav-field"><label>访问令牌 (PAT)</label>
+                    <input type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="fine-grained PAT, Contents 读写" /></div>
+                  <div className="webdav-actions">
+                    <button className="primary" onClick={handleGithubSave} disabled={ghTest === 'testing'}>
+                      {ghTest === 'testing' ? '连接中...' : ghTest === 'fail' ? '连接失败' : '连接并保存'}
+                    </button>
+                  </div>
+                  <div className="data-hint">在 GitHub → Settings → Developer settings → Fine-grained tokens 生成，仅授予该仓库 Contents 读写。</div>
+                </>
+              )}
+            </div>
+          )}
 
           {syncProvider === 'webdav' && (
             <div className="webdav-form">

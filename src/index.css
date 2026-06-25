@@ -2630,3 +2630,20 @@ input {
   background: var(--accent-light);
 }
 
+/* GitHub Panel */
+.github-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.onedrive-account {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--sidebar-hover);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
