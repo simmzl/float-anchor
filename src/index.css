@@ -2015,6 +2015,66 @@ input {
   50% { opacity: 0.4; }
 }
 
+.sync-dot.pending {
+  background: #f59e0b;
+  animation: breath-slow 2s ease-in-out infinite;
+}
+
+@keyframes breath-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.sync-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.sync-indicator .sync-dot {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.sync-indicator.clickable {
+  cursor: pointer;
+}
+
+.sync-indicator.clickable:hover {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.06));
+  color: var(--text-primary);
+}
+
+.sync-indicator:disabled {
+  pointer-events: none;
+}
+
+.sync-indicator.error {
+  color: #ef4444;
+}
+
+.sync-indicator-label {
+  font-size: 11px;
+  color: inherit;
+  white-space: normal;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .sync-decision-card {
   display: flex;
   flex-direction: column;
@@ -2537,3 +2597,53 @@ input {
   background: var(--sidebar-hover);
   border-radius: var(--radius-sm);
 }
+
+/* Provider Switcher */
+.provider-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.provider-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.provider-option:hover {
+  background: var(--sidebar-hover);
+}
+
+.provider-option.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* GitHub Panel */
+.github-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.onedrive-account {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--sidebar-hover);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+

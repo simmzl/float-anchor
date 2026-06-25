@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
-import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox } from './types'
+import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox, SyncProvider } from './types'
+
+export function getEffectiveProvider(settings: AppSettings): SyncProvider {
+  return settings.syncProvider ?? (settings.webdav?.server ? 'webdav' : 'none')
+}
 
 interface AppState {
   canvases: Canvas[]
@@ -11,7 +15,8 @@ interface AppState {
   highlightCardId: string | null
   loaded: boolean
   settings: AppSettings
-  syncStatus: 'idle' | 'syncing' | 'success' | 'error' | 'warning'
+  syncStatus: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning'
+  syncError: string | null
   syncDecision: WebDAVSyncDecision | null
   imageCacheVersion: number
   showSettings: boolean
@@ -22,8 +27,9 @@ interface AppState {
   saveSettings: (s: AppSettings) => Promise<void>
   setTheme: (theme: 'light' | 'dark') => void
   setWebDAVConfig: (config: WebDAVConfig | undefined) => void
+  setSyncProvider: (p: SyncProvider) => void
   setShowSettings: (v: boolean) => void
-  setSyncStatus: (s: 'idle' | 'syncing' | 'success' | 'error' | 'warning') => void
+  setSyncStatus: (s: 'idle' | 'pending' | 'syncing' | 'success' | 'error' | 'warning', error?: string | null) => void
   setSyncDecision: (decision: WebDAVSyncDecision | null) => void
   refreshImageCache: () => void
 
@@ -70,9 +76,11 @@ interface AppState {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let syncTimer: ReturnType<typeof setTimeout> | undefined
+let lastRemoteUploadAt = 0
 
 const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
 const LOCAL_WEBDAV_SYNC_DELAY_MS = 2000
+const MIN_REMOTE_UPLOAD_INTERVAL_MS = 30000
 
 export const useStore = create<AppState>((set, get) => ({
   canvases: [],
@@ -83,6 +91,7 @@ export const useStore = create<AppState>((set, get) => ({
   loaded: false,
   settings: { theme: 'light' },
   syncStatus: 'idle',
+  syncError: null,
   syncDecision: null,
   imageCacheVersion: 0,
   showSettings: false,
@@ -128,13 +137,17 @@ export const useStore = create<AppState>((set, get) => ({
       const { canvases, activeCanvasId, settings, syncDecision } = get()
       void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
         if (!saved) return
-        if (settings.webdav?.server && !syncDecision) {
+        if (getEffectiveProvider(settings) !== 'none' && !syncDecision) {
+          set({ syncStatus: 'pending', syncError: null })
           clearTimeout(syncTimer)
+          const sinceLast = Date.now() - lastRemoteUploadAt
+          const delay = Math.max(LOCAL_WEBDAV_SYNC_DELAY_MS, MIN_REMOTE_UPLOAD_INTERVAL_MS - sinceLast)
           syncTimer = setTimeout(() => {
-            set({ syncStatus: 'syncing' })
-            window.electronAPI.webdavAutoSync(settings.webdav!).then(async (res) => {
+            set({ syncStatus: 'syncing', syncError: null })
+            window.electronAPI.syncAuto().then(async (res) => {
               if (!res.success) {
-                set({ syncStatus: 'error' })
+                // 失败时不更新 lastRemoteUploadAt，使下次编辑可较快重试（delay 退化为 2s）
+                set({ syncStatus: 'error', syncError: res.error ?? '同步失败' })
                 return
               }
               if (res.action === 'needs-confirmation' && res.decision) {
@@ -145,20 +158,26 @@ export const useStore = create<AppState>((set, get) => ({
                 })
                 return
               }
-              if (res.success && res.action === 'downloaded' && res.data) {
+              if (res.action === 'downloaded' && res.data) {
                 await get().loadData()
                 get().refreshImageCache()
               }
-              if (res.action === 'uploaded' || res.action === 'downloaded') {
-                set({ syncStatus: 'success', syncDecision: null })
-                setTimeout(() => {
-                  if (get().syncStatus === 'success') set({ syncStatus: 'idle' })
-                }, 3000)
+              if (res.action === 'uploaded' || res.action === 'downloaded' || res.action === 'up-to-date') {
+                // 仅成功路径才更新节流时间戳
+                lastRemoteUploadAt = Date.now()
+                if (res.action !== 'up-to-date') {
+                  set({ syncStatus: 'success', syncDecision: null })
+                  setTimeout(() => {
+                    if (get().syncStatus === 'success') set({ syncStatus: 'idle' })
+                  }, 3000)
+                } else {
+                  set({ syncStatus: 'idle', syncDecision: null })
+                }
                 return
               }
               set({ syncStatus: 'idle', syncDecision: null })
-            }).catch(() => set({ syncStatus: 'error' }))
-          }, LOCAL_WEBDAV_SYNC_DELAY_MS)
+            }).catch(() => set({ syncStatus: 'error', syncError: '同步失败' }))
+          }, delay)
         }
       })
     }, 600)
@@ -190,9 +209,14 @@ export const useStore = create<AppState>((set, get) => ({
     get().saveSettings(s)
   },
 
+  setSyncProvider: (p) => {
+    const s = { ...get().settings, syncProvider: p }
+    get().saveSettings(s)
+  },
+
   setShowSettings: (v) => set({ showSettings: v }),
 
-  setSyncStatus: (s) => set({ syncStatus: s }),
+  setSyncStatus: (s, error = null) => set({ syncStatus: s, syncError: s === 'error' ? (error ?? '同步失败') : null }),
 
   setSyncDecision: (decision) => set({ syncDecision: decision }),
 
