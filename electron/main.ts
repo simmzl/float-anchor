@@ -514,10 +514,11 @@ async function refreshRemoteTag(adapter: RemoteAdapter): Promise<void> {
 function describeSyncError(err: any): string {
   const status = err?.status ?? err?.response?.status
   const msg = String(err?.message ?? err ?? '')
-  if (status === 401) return 'GitHub 令牌无效或权限不足'
   if (status === 409 || status === 422) return '云端已更新，正在重新同步'
   if (status === 403 || /\b403\b|TrafficRateExhausted/i.test(msg)) return '坚果云流量/请求超限，请稍后再试（约 6 小时后恢复）'
-  if (/\b401\b|Unauthorized/i.test(msg)) return '账号或应用密码不正确'
+  if (status === 401 || /\b401\b|Unauthorized/i.test(msg)) {
+    return readSettingsSync()?.syncProvider === 'github' ? 'GitHub 令牌无效或权限不足' : '账号或应用密码不正确'
+  }
   if (status === 507 || /insufficient storage|quota/i.test(msg)) return '云端空间不足'
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ECONNRESET|getaddrinfo|fetch failed|network/i.test(msg)) return '网络连接失败，请检查网络'
   if (msg.includes('未配置同步')) return '未配置同步'
