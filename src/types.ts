@@ -76,12 +76,13 @@ export interface WebDAVConfig {
   password: string
 }
 
-export type SyncProvider = 'webdav' | 'none'
+export type SyncProvider = 'webdav' | 'github' | 'none'
 
 export interface AppSettings {
   theme: 'light' | 'dark'
   webdav?: WebDAVConfig
   syncProvider?: SyncProvider
+  github?: { repo: string; branch?: string }
 }
 
 export interface WebDAVSyncSummary {
@@ -179,6 +180,11 @@ declare global {
       prepareClearAllData: () => Promise<PrepareClearResult>
       clearAllData: () => Promise<{ success: boolean; data?: AppData; error?: string }>
       getBackupDir: () => Promise<string>
+      githubTest: (c: { repo: string; token: string; branch?: string }) => Promise<{ success: boolean; error?: string }>
+      githubSaveToken: (token: string) => Promise<{ success: boolean }>
+      githubClearToken: () => Promise<{ success: boolean }>
+      githubHasToken: () => Promise<{ has: boolean }>
+      githubAccount: () => Promise<{ login: string | null }>
     }
   }
 }
