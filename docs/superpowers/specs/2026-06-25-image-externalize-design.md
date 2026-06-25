@@ -54,8 +54,8 @@ file → file.arrayBuffer() → window.electronAPI.saveImage(buf, file.type)
 ### 2.3 存量迁移（设置 → 数据管理 →「提取内嵌图片为文件」）
 按钮 → IPC `migrate-embedded-images`（主进程，操作 `float-anchor.json`）：
 1. `createBackup()` 先备份。
-2. 读数据，遍历每个 canvas 的每张 card 的 `content`，用纯函数扫描 `<img src="data:image/...;base64,...">`（HTML 形态，tiptap 输出）。
-3. 每个 data URL：解码 base64 → 字节 → 按 2.1 规则存盘（sha256 去重）→ 把该 data URL 替换为 `fa-img://{name}`。
+2. 读数据，遍历每个 canvas 的每张 card 的 `content`，用纯函数扫描 `data:image/...;base64,...` token。**注意**：`card.content` 实际存为 **Markdown**（编辑器 `onChange` 用 turndown 把 HTML 转 Markdown 存盘），内嵌图形态是 `![](data:image/...;base64,...)`；按 token 正则匹配可同时覆盖 markdown 与偶发 HTML `<img>` 两种写法。
+3. 每个 data URL token：解码 base64 → 字节 → 按 2.1 规则存盘（sha256 去重）→ 把该 `data:...;base64,...` token 替换为 `fa-img://{name}`。
 4. 写回数据文件，返回 `{ count, beforeBytes, afterBytes }`。
 - 渲染层收到后 `loadData()` + `refreshImageCache()`，提示「提取了 N 张图，JSON 从 X 缩到 Y」。
 - 仅处理 `card.content`（TextBox/标题为纯文本，无图）。
@@ -77,7 +77,7 @@ file → file.arrayBuffer() → window.electronAPI.saveImage(buf, file.type)
 ## 5. 可测试性
 - **纯函数可测**（vitest）：
   - `extFromMime(mime)` / sha256+ext 命名规则。
-  - 迁移核心 `rewriteEmbeddedImages(content, save) → { content, extracted }`：给定含 data URL 的 HTML 字符串 + 一个注入的 save 回调，断言返回的 content 里 data URL 被替换为 `fa-img://`、save 被以正确字节调用。
+  - 迁移核心 `rewriteEmbeddedImages(content, save) → { content, extracted }`：给定含 `![](data:...)` 的 Markdown 字符串 + 一个注入的 save 回调，断言返回的 content 里 data URL 被替换为 `fa-img://`、save 被以正确字节调用。
 - **人工 GUI 验证**：真实粘贴截图 → content 存 `fa-img://`、图片正常显示、JSON 不再膨胀；迁移按钮 → 体积下降、图片仍显示、同步正常。
 
 ## 6. 实现阶段（供实现计划参考）
