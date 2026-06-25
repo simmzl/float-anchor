@@ -63,14 +63,29 @@ async function applyRemote(adapter: RemoteAdapter, store: LocalStore, remoteData
   return normalized
 }
 
-export async function reconcileState(adapter: RemoteAdapter, store: LocalStore): Promise<SyncResult> {
+export async function reconcileState(
+  adapter: RemoteAdapter,
+  store: LocalStore,
+  opts?: { remoteUnchanged?: boolean },
+): Promise<SyncResult> {
   const localData = store.readSnapshot()
   const localTs = localData?._syncTimestamp || 0
-  const localSummary = summarizeSyncData(localData)
-  const localFingerprint = localData ? getComparableSyncSnapshot(localData) : ''
   const localModifiedAt = store.getModifiedAt()
   const localDirty = !!localData && localModifiedAt > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS
 
+  // 调用方已用 ETag/Last-Modified 确认远端自上次同步以来未变 → 跳过下载整份快照。
+  // 远端 == 我们上次同步的状态，故本地脏即"本地领先"，直接上传无冲突；本地干净即已是最新。
+  // 代价：无法下载远端做内容指纹比对，本地脏但内容恰好相同时会多上传一次（最坏与旧版下载等价，永不更差）。
+  if (opts?.remoteUnchanged && localData) {
+    if (localDirty) {
+      await uploadSnapshot(adapter, store)
+      return { success: true, action: 'uploaded' }
+    }
+    return { success: true, action: 'up-to-date' }
+  }
+
+  const localSummary = summarizeSyncData(localData)
+  const localFingerprint = localData ? getComparableSyncSnapshot(localData) : ''
   const remote = await adapter.loadRemoteSnapshot()
   if (!remote) {
     if (localData && hasMeaningfulSyncData(localSummary)) {

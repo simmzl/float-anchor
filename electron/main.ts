@@ -7,7 +7,7 @@ import archiver from 'archiver'
 import AdmZip from 'adm-zip'
 import { extractStoredImageName } from './sync/image-names'
 import { createNodeLocalStore } from './sync/local-store'
-import { reconcileState, resolveConflict, LOCAL_SYNC_DIRTY_TOLERANCE_MS } from './sync/engine'
+import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
@@ -507,8 +507,17 @@ async function refreshRemoteTag(adapter: RemoteAdapter): Promise<void> {
 async function runSync() {
   const adapter = getActiveAdapter()
   if (!adapter) return { success: false, error: '未配置同步' }
-  const result = await reconcileState(adapter, getLocalStore())
-  await refreshRemoteTag(adapter)
+  // 先用 ETag 探测远端是否变化；未变则引擎走快路径（本地脏直接上传/干净即最新），跳过整份下载。
+  let remoteUnchanged = false
+  if (adapter.getRemoteTag) {
+    const tag = await adapter.getRemoteTag()
+    remoteUnchanged = !!tag && tag === lastRemoteTag
+  }
+  const result = await reconcileState(adapter, getLocalStore(), { remoteUnchanged })
+  // 远端确实未变且本次没上传 → lastRemoteTag 仍准确，无需再抓；否则(下载/上传/远端变了)刷新缓存。
+  if (!remoteUnchanged || result.action === 'uploaded') {
+    await refreshRemoteTag(adapter)
+  }
   return result
 }
 
@@ -534,23 +543,9 @@ ipcMain.handle('sync-startup', async () => enqueueSync(async () => {
 }))
 
 ipcMain.handle('sync-periodic', async () => enqueueSync(async () => {
+  // 与 sync-auto 共用 runSync：远端未变(ETag)时跳过整份下载，仅一个 PROPFIND。
   try {
-    const adapter = getActiveAdapter()
-    if (!adapter) return { success: false, error: '未配置同步' }
-    if (adapter.getRemoteTag) {
-      const tag = await adapter.getRemoteTag()
-      const store = getLocalStore()
-      const local = store.readSnapshot()
-      const localDirty = !!local && store.getModifiedAt() > (local._syncTimestamp || 0) + LOCAL_SYNC_DIRTY_TOLERANCE_MS
-      // 远端未变(ETag 相同)且本地不脏 → 跳过整份快照下载，仅花一个 PROPFIND
-      if (tag && tag === lastRemoteTag && !localDirty) {
-        return { success: true, action: 'up-to-date' }
-      }
-      const result = await reconcileState(adapter, store)
-      await refreshRemoteTag(adapter)
-      return result
-    }
-    return runSync()
+    return await runSync()
   } catch (err) {
     return { success: false, error: String(err) }
   }

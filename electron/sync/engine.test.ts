@@ -66,6 +66,48 @@ describe('reconcileState', () => {
   })
 })
 
+describe('reconcileState — remoteUnchanged 快路径（保存免下载）', () => {
+  function countingAdapter(init?: { data?: AppData | null }): RemoteAdapter & { _data: AppData | null; loadCount: () => number } {
+    let remote: AppData | null = init?.data ?? null
+    let loadCount = 0
+    const a: RemoteAdapter & { _data: AppData | null; loadCount: () => number } = {
+      _data: remote,
+      loadCount: () => loadCount,
+      async test() { return { ok: true } },
+      async loadRemoteSnapshot() { loadCount++; return remote ? { data: remote } : null },
+      async uploadRemoteSnapshot(data) { remote = JSON.parse(JSON.stringify(data)); a._data = remote; return {} },
+      async listRemoteImages(): Promise<RemoteImageEntry[]> { return [] },
+      async uploadImage() {},
+      async downloadImage() { return Buffer.from([]) },
+    }
+    return a
+  }
+
+  it('远端未变 + 本地脏 → 直接上传，不下载远端', async () => {
+    const store = memStore({ data: { ...canvasWith({ cards: [{}] }), _syncTimestamp: 1 }, mtime: 999999 })
+    const adapter = countingAdapter({ data: { ...canvasWith({ cards: [{}] }), _syncTimestamp: 1 } })
+    const res = await reconcileState(adapter, store, { remoteUnchanged: true })
+    expect(res.action).toBe('uploaded')
+    expect(adapter.loadCount()).toBe(0) // 关键：跳过整份快照下载
+    expect(adapter._data?.canvases[0].cards.length).toBe(1)
+  })
+
+  it('远端未变 + 本地干净 → up-to-date，不下载远端', async () => {
+    const data = { ...canvasWith({ cards: [{}] }), _syncTimestamp: 5 }
+    const adapter = countingAdapter({ data })
+    const res = await reconcileState(adapter, memStore({ data, mtime: 5 }), { remoteUnchanged: true })
+    expect(res.action).toBe('up-to-date')
+    expect(adapter.loadCount()).toBe(0)
+  })
+
+  it('未传 remoteUnchanged → 仍走完整 reconcile（会下载一次）', async () => {
+    const data = { ...canvasWith({ cards: [{}] }), _syncTimestamp: 5 }
+    const adapter = countingAdapter({ data })
+    await reconcileState(adapter, memStore({ data, mtime: 5 }))
+    expect(adapter.loadCount()).toBe(1) // 默认行为不变
+  })
+})
+
 describe('downloadMissingImages — 扩展名容差匹配', () => {
   it('本地引用 a.png，远端只有 a.jpeg → 应下载并写入 a.jpeg', async () => {
     const remoteImages: RemoteImageEntry[] = [{ name: 'a.jpeg', size: 10 }]
