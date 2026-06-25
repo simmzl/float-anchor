@@ -281,7 +281,7 @@ export default function SettingsModal() {
     const s = { ...useStore.getState().settings, github: { repo: ghRepo.trim(), branch: ghBranch.trim() || 'main' } }
     await useStore.getState().saveSettings(s)
     useStore.getState().setSyncProvider('github')
-    setGhConnected(true); setGhToken('')
+    setGhConnected(true); setGhToken(''); setGhTest('idle')
     window.electronAPI.githubAccount().then((a) => setGhAccount(a.login))
     useStore.getState().setSyncStatus('syncing')
     window.electronAPI.syncAuto().then((r) => applySyncResult(r)).catch(() => useStore.getState().setSyncStatus('error', '同步失败'))
@@ -391,7 +391,7 @@ export default function SettingsModal() {
     ? '已同步'
     : syncStatus === 'error'
     ? '同步失败'
-    : connected ? '已连接' : '未连接'
+    : (connected || ghConnected) ? '已连接' : '未连接'
 
   const syncDotClass = syncStatus === 'syncing'
     ? 'syncing'
@@ -399,7 +399,7 @@ export default function SettingsModal() {
     ? 'warning'
     : syncStatus === 'error'
     ? 'error'
-    : connected ? 'connected' : ''
+    : (connected || ghConnected) ? 'connected' : ''
 
   return (
     <div className="settings-overlay" onClick={handleOverlayClick}>

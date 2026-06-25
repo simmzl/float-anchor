@@ -36,7 +36,8 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
     return resp
   }
 
-  const contentUrl = (path: string) => `${base}/${path}?ref=${encodeURIComponent(branch)}`
+  const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/')
+  const contentUrl = (path: string) => `${base}/${encodePath(path)}?ref=${encodeURIComponent(branch)}`
 
   async function fetchSha(path: string): Promise<string | null> {
     const resp = await ghFetch(contentUrl(path))
@@ -47,11 +48,11 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
     return meta?.sha || null
   }
 
-  async function putFile(path: string, base64: string, message: string): Promise<string | undefined> {
+  async function putFile(path: string, base64: string, message: string, ifMatch?: string): Promise<string | undefined> {
     const body: Record<string, unknown> = { message, content: base64, branch }
-    const sha = shaCache.get(path)
+    const sha = ifMatch ?? shaCache.get(path)
     if (sha) body.sha = sha
-    const resp = await ghFetch(`${base}/${path}`, {
+    const resp = await ghFetch(`${base}/${encodePath(path)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     if (!resp.ok) throw new Error(`GitHub ${resp.status}`)
@@ -90,9 +91,9 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
       return { data: normalizeSyncData(JSON.parse(text)), tag: meta?.sha }
     },
 
-    async uploadRemoteSnapshot(data: AppData) {
+    async uploadRemoteSnapshot(data: AppData, opts?: { ifMatch?: string }) {
       const base64 = Buffer.from(JSON.stringify(data, null, 2), 'utf-8').toString('base64')
-      const newSha = await putFile(SNAPSHOT_PATH, base64, 'FloatAnchor: 同步快照')
+      const newSha = await putFile(SNAPSHOT_PATH, base64, 'FloatAnchor: 同步快照', opts?.ifMatch)
       return { tag: newSha }
     },
 
@@ -119,7 +120,7 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
     },
 
     async downloadImage(name: string): Promise<Buffer> {
-      const resp = await ghFetch(contentUrl(`${IMAGES_DIR}/${encodeURIComponent(name)}`), {
+      const resp = await ghFetch(contentUrl(`${IMAGES_DIR}/${name}`), {
         headers: { Accept: 'application/vnd.github.raw' },
       })
       if (!resp.ok) throw new Error(`GitHub ${resp.status}`)

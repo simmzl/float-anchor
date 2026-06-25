@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   prepareClearAllData: () => ipcRenderer.invoke('prepare-clear-all-data'),
   clearAllData: () => ipcRenderer.invoke('clear-all-data'),
   getBackupDir: () => ipcRenderer.invoke('get-backup-dir'),
-  githubTest: (c: any) => ipcRenderer.invoke('github-test', c),
+  githubTest: (c: { repo: string; token: string; branch?: string }) => ipcRenderer.invoke('github-test', c),
   githubSaveToken: (token: string) => ipcRenderer.invoke('github-save-token', token),
   githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
   githubHasToken: () => ipcRenderer.invoke('github-has-token'),

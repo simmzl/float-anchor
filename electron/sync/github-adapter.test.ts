@@ -60,4 +60,29 @@ describe('GitHubAdapter', () => {
     mockFetch(() => ({ status: 404, ok: false }))
     expect(await createGitHubAdapter(cfg).listRemoteImages()).toEqual([])
   })
+
+  it('含空格文件名: uploadImage 与 downloadImage URL 路径均含 %20 且一致', async () => {
+    const calls = mockFetch((url, init) => {
+      if (init?.method === 'PUT') return { json: { content: { sha: 'sha-img' } } }
+      // fetchSha 预热: 404 使 uploadImage 跳过 sha; downloadImage 需返回 ok+二进制
+      if (init?.headers?.Accept === 'application/vnd.github.raw') return { ok: true, text: '\x01\x02\x03' }
+      return { status: 404, ok: false }
+    })
+    const a = createGitHubAdapter(cfg)
+
+    await a.uploadImage('a b.png', Buffer.from([1, 2, 3]))
+    await a.downloadImage('a b.png')
+
+    // PUT URL 含编码后的 a%20b.png
+    const putCall = calls.find((c) => c.init?.method === 'PUT')!
+    expect(putCall.url).toContain('a%20b.png')
+
+    // downloadImage GET URL（raw Accept）也含编码后的 a%20b.png
+    const dlCall = calls.find((c) => c.init?.headers?.Accept === 'application/vnd.github.raw')!
+    expect(dlCall.url).toContain('a%20b.png')
+
+    // 两者路径中图片段一致
+    const segment = (url: string) => url.split('images/')[1]?.split('?')[0]
+    expect(segment(putCall.url)).toBe(segment(dlCall.url))
+  })
 })
