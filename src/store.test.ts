@@ -129,3 +129,95 @@ describe('getEffectiveProvider', () => {
   })
 
 })
+
+describe('删除卡片清理悬空引用（#3）', () => {
+  const mkCard = (id: string): Card => ({ id, title: '', content: '', x: 0, y: 0, width: 200, height: 150 })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  const setup = () => {
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{
+        id: 'cv', name: 'cv',
+        cards: [mkCard('c1'), mkCard('c2'), mkCard('c3')],
+        connections: [
+          { id: 'cn1', fromCardId: 'c1', toCardId: 'c2' },
+          { id: 'cn2', fromCardId: 'c2', toCardId: 'c3' },
+        ],
+        sections: [{ id: 's1', name: 's', x: 0, y: 0, width: 400, height: 400, color: '#fff', cardIds: ['c1', 'c2'] }],
+      }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null,
+    })
+  }
+
+  it('deleteUnits 删卡片后，清理指向它的连接 + 分区成员引用', () => {
+    setup()
+    useStore.getState().deleteUnits({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    const cv = useStore.getState().canvases[0]
+    expect(cv.cards.map((c) => c.id)).toEqual(['c2', 'c3'])
+    expect((cv.connections ?? []).map((c) => c.id)).toEqual(['cn2'])           // cn1(c1↔c2) 被清
+    expect(cv.sections![0].cardIds).toEqual(['c2'])                            // 分区成员去掉 c1
+  })
+
+  it('deleteCard 单删后，同样清理连接 + 分区成员引用', () => {
+    setup()
+    useStore.getState().deleteCard('c2')
+    const cv = useStore.getState().canvases[0]
+    expect(cv.cards.map((c) => c.id)).toEqual(['c1', 'c3'])
+    expect((cv.connections ?? []).map((c) => c.id)).toEqual([])               // cn1、cn2 都引用 c2 → 全清
+    expect(cv.sections![0].cardIds).toEqual(['c1'])                           // 分区成员去掉 c2
+  })
+})
+
+describe('方向键微移分区带动成员卡片（#4）', () => {
+  const mkCard = (id: string, x: number, y: number): Card => ({ id, title: '', content: '', x, y, width: 200, height: 150 })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  const setup = () => {
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{
+        id: 'cv', name: 'cv',
+        cards: [mkCard('c1', 10, 10), mkCard('c2', 20, 20), mkCard('c3', 500, 500)],
+        sections: [{ id: 's1', name: 's', x: 0, y: 0, width: 400, height: 400, color: '#fff', cardIds: ['c1', 'c2'] }],
+      }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null,
+    })
+  }
+
+  it('微移选中分区时，成员卡片一起移动，非成员不动', () => {
+    setup()
+    useStore.getState().nudgeUnits({ cardIds: [], labelIds: [], sectionIds: ['s1'], textIds: [] }, 5, 7)
+    const cv = useStore.getState().canvases[0]
+    const get = (id: string) => cv.cards.find((c) => c.id === id)!
+    expect({ x: cv.sections![0].x, y: cv.sections![0].y }).toEqual({ x: 5, y: 7 })  // 分区移动
+    expect({ x: get('c1').x, y: get('c1').y }).toEqual({ x: 15, y: 17 })            // 成员 c1 跟随
+    expect({ x: get('c2').x, y: get('c2').y }).toEqual({ x: 25, y: 27 })            // 成员 c2 跟随
+    expect({ x: get('c3').x, y: get('c3').y }).toEqual({ x: 500, y: 500 })          // 非成员不动
+  })
+
+  it('成员卡片同时被直接选中时只移动一次（去重）', () => {
+    setup()
+    useStore.getState().nudgeUnits({ cardIds: ['c1'], labelIds: [], sectionIds: ['s1'], textIds: [] }, 5, 7)
+    const c1 = useStore.getState().canvases[0].cards.find((c) => c.id === 'c1')!
+    expect({ x: c1.x, y: c1.y }).toEqual({ x: 15, y: 17 })  // 只 +5,+7，不是 +10,+14
+  })
+})

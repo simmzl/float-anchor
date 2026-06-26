@@ -339,7 +339,19 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId
-          ? { ...c, cards: c.cards.filter((card) => card.id !== cardId) }
+          ? {
+              ...c,
+              cards: c.cards.filter((card) => card.id !== cardId),
+              connections: (c.connections ?? []).filter(
+                (cn) => cn.fromCardId !== cardId && cn.toCardId !== cardId,
+              ),
+              sections: (c.sections ?? []).map((sec) => {
+                const members = sec.cardIds ?? []
+                return members.includes(cardId)
+                  ? { ...sec, cardIds: members.filter((id) => id !== cardId) }
+                  : sec
+              }),
+            }
           : c,
       ),
       editingCardId:
@@ -1096,6 +1108,9 @@ export const useStore = create<AppState>((set, get) => ({
           cards: c.cards.filter((cd) => !cardIds.has(cd.id)),
           labels: (c.labels ?? []).filter((l) => !labelIds.has(l.id)),
           texts: (c.texts ?? []).filter((t) => !textIds.has(t.id)),
+          connections: (c.connections ?? []).filter(
+            (cn) => !cardIds.has(cn.fromCardId) && !cardIds.has(cn.toCardId),
+          ),
           sections: (c.sections ?? [])
             .filter((sec) => !sectionIds.has(sec.id))
             .map((sec) => {
@@ -1115,10 +1130,16 @@ export const useStore = create<AppState>((set, get) => ({
     const { activeCanvasId } = get()
     if (!activeCanvasId) return
     if (dx === 0 && dy === 0) return
-    const cardIds = new Set(ids.cardIds)
     const labelIds = new Set(ids.labelIds)
     const sectionIds = new Set(ids.sectionIds)
     const textIds = new Set(ids.textIds)
+    // 选中分区的成员卡片随分区一起移动（与拖动分区 moveSection 行为一致）；
+    // 用 Set 与直接选中的卡片去重，避免成员卡片被移动两次。
+    const cardIds = new Set(ids.cardIds)
+    const canvas = get().canvases.find((c) => c.id === activeCanvasId)
+    for (const sec of (canvas?.sections ?? [])) {
+      if (sectionIds.has(sec.id)) for (const cid of (sec.cardIds ?? [])) cardIds.add(cid)
+    }
     set((s) => ({
       canvases: s.canvases.map((c) => {
         if (c.id !== activeCanvasId) return c

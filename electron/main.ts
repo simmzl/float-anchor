@@ -811,6 +811,11 @@ ipcMain.handle('import-backup', async () => {
         for (const cn of importedCanvas.connections || []) existingConnMap.set(cn.id, cn)
         existing.connections = Array.from(existingConnMap.values())
 
+        const existingTextMap = new Map<string, any>()
+        for (const t of existing.texts || []) existingTextMap.set(t.id, t)
+        for (const t of importedCanvas.texts || []) existingTextMap.set(t.id, t)
+        existing.texts = Array.from(existingTextMap.values())
+
         if (importedCanvas.viewport) existing.viewport = importedCanvas.viewport
         if (importedCanvas.name) existing.name = importedCanvas.name
 

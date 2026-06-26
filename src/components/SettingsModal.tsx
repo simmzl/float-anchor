@@ -256,8 +256,11 @@ export default function SettingsModal() {
     return `${summary.canvasCount} 个画布 / ${summary.cardCount} 张卡片 / ${summary.labelCount} 个标题 / ${summary.sectionCount} 个分区 / ${summary.connectionCount} 条连线 / ${summary.textCount} 个文本框`
   }, [])
 
-  // 当前生效的 provider
+  // 当前真实生效的 provider（来自已保存的 settings）
   const syncProvider = getEffectiveProvider(settings)
+  // 当前查看的标签页（本地状态，与真实生效 provider 分离）：
+  // 点 WebDAV/GitHub 标签只切换面板，不改生效 provider；只有保存/连接成功才真正切换。
+  const [activeTab, setActiveTab] = useState(syncProvider)
 
   const markSyncSuccess = useCallback(() => {
     useStore.getState().setSyncStatus('success')
@@ -526,26 +529,26 @@ export default function SettingsModal() {
           <h3>云同步</h3>
           <div className="provider-switcher">
             <button
-              className={`provider-option ${syncProvider === 'webdav' ? 'active' : ''}`}
-              onClick={() => useStore.getState().setSyncProvider('webdav')}
+              className={`provider-option ${activeTab === 'webdav' ? 'active' : ''}`}
+              onClick={() => setActiveTab('webdav')}
             >
-              坚果云 WebDAV
+              坚果云 WebDAV{syncProvider === 'webdav' ? ' ✓' : ''}
             </button>
             <button
-              className={`provider-option ${syncProvider === 'github' ? 'active' : ''}`}
-              onClick={() => useStore.getState().setSyncProvider('github')}
+              className={`provider-option ${activeTab === 'github' ? 'active' : ''}`}
+              onClick={() => setActiveTab('github')}
             >
-              GitHub
+              GitHub{syncProvider === 'github' ? ' ✓' : ''}
             </button>
             <button
-              className={`provider-option ${syncProvider === 'none' ? 'active' : ''}`}
-              onClick={() => useStore.getState().setSyncProvider('none')}
+              className={`provider-option ${activeTab === 'none' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('none'); useStore.getState().setSyncProvider('none') }}
             >
-              关闭
+              关闭{syncProvider === 'none' ? ' ✓' : ''}
             </button>
           </div>
 
-          {syncProvider === 'github' && (
+          {activeTab === 'github' && (
             <div className="github-panel">
               {ghConnected ? (
                 <>
@@ -575,7 +578,7 @@ export default function SettingsModal() {
             </div>
           )}
 
-          {syncProvider === 'webdav' && (
+          {activeTab === 'webdav' && (
             <div className="webdav-form">
               <div className="webdav-field">
                 <label>服务器地址</label>
