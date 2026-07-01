@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { getEffectiveProvider, isCardSnappedAdjacent, useStore } from './store'
 import type { AppSettings, Card, Section } from './types'
+import { historyStore, snapshotCanvas } from './history'
 
 describe('isCardSnappedAdjacent（拖拽贴靠分区成员的判定）', () => {
   const GAP = 12
@@ -219,5 +220,91 @@ describe('方向键微移分区带动成员卡片（#4）', () => {
     useStore.getState().nudgeUnits({ cardIds: ['c1'], labelIds: [], sectionIds: ['s1'], textIds: [] }, 5, 7)
     const c1 = useStore.getState().canvases[0].cards.find((c) => c.id === 'c1')!
     expect({ x: c1.x, y: c1.y }).toEqual({ x: 15, y: 17 })  // 只 +5,+7，不是 +10,+14
+  })
+})
+
+describe('undo / redo（store 集成）', () => {
+  const mkCard = (id: string, title: string) =>
+    ({ id, title, content: '', x: 0, y: 0, width: 300, height: 150 })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+    historyStore.clear()
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1', 'A')] }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null, suppressHistory: false,
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('undo 恢复到记录时的内容，redo 再前进', () => {
+    const cv0 = useStore.getState().canvases[0]
+    historyStore.record('cv', snapshotCanvas(cv0))          // 记录 title=A
+    useStore.getState().updateCard('c1', { title: 'B' })     // 改成 B
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('B')
+
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('A')
+
+    useStore.getState().redo()
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('B')
+  })
+
+  it('undo 无历史时不动作', () => {
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('A')
+  })
+})
+
+describe('copy / paste（store 集成）', () => {
+  const mkCard = (id: string, x: number) =>
+    ({ id, title: id, content: '', x, y: 0, width: 300, height: 150 })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+    historyStore.clear()
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1', 100)] }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null, suppressHistory: false,
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  // 注：此用例须先于下面两个用例运行——copySelection/pasteClipboard 的 clipboard 是
+  // store.ts 模块级变量（非 zustand state），beforeEach 的 setState 不会重置它。
+  // Vitest 默认仅按文件隔离模块、同文件内的 it 之间共享模块状态，
+  // 因此把"未复制时应返回 null"放在任何 copySelection 调用之前，避免跨用例状态泄漏。
+  it('未复制时粘贴返回 null', () => {
+    expect(useStore.getState().pasteClipboard()).toBeNull()
+  })
+
+  it('复制后粘贴生成偏移副本并返回新 id', () => {
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    const ids = useStore.getState().pasteClipboard()
+    expect(ids).not.toBeNull()
+    const cv = useStore.getState().canvases[0]
+    expect(cv.cards.length).toBe(2)
+    const pasted = cv.cards.find((c) => c.id === ids!.cardIds[0])!
+    expect(pasted.x).toBe(124) // 100 + 24
+  })
+
+  it('连续粘贴偏移递增', () => {
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    useStore.getState().pasteClipboard()
+    useStore.getState().pasteClipboard()
+    const xs = useStore.getState().canvases[0].cards.map((c) => c.x).sort((a, b) => a - b)
+    expect(xs).toEqual([100, 124, 148])
   })
 })
