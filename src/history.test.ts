@@ -85,3 +85,82 @@ describe('historyStore', () => {
     expect(historyStore.canUndo('cv1')).toBe(false)
   })
 })
+
+import { afterEach, vi } from 'vitest'
+import { initHistory } from './history'
+import { useStore } from './store'
+import type { AppSettings } from './types'
+
+describe('initHistory 时间合并记录', () => {
+  let dispose: (() => void) | undefined
+  const mkCard = (id: string, x: number) => ({ id, title: id, content: '', x, y: 0, width: 300, height: 150 })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+    historyStore.clear()
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1', 0)] }],
+      settings: { theme: 'light' } as AppSettings,
+      editingCardId: null, editingTextId: null,
+      syncDecision: null, suppressHistory: false,
+    })
+  })
+  afterEach(() => {
+    dispose?.(); dispose = undefined
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('连续拖动合并为一条，undo 回到起点', () => {
+    dispose = initHistory()
+    useStore.getState().moveCard('c1', 5, 0)
+    useStore.getState().moveCard('c1', 10, 0)
+    useStore.getState().moveCard('c1', 15, 0)
+    expect(historyStore.canUndo('cv')).toBe(true)
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].x).toBe(0)
+    // 只有一条：再 undo 无效
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].x).toBe(0)
+  })
+
+  it('viewport 变化不记历史', () => {
+    dispose = initHistory()
+    useStore.getState().saveViewport('cv', { panX: 100, panY: 50, scale: 2 })
+    expect(historyStore.canUndo('cv')).toBe(false)
+  })
+
+  it('编辑会话内多次更新合并为一条', () => {
+    dispose = initHistory()
+    useStore.getState().setEditingCard('c1')
+    useStore.getState().updateCard('c1', { content: 'a' })
+    vi.advanceTimersByTime(500)
+    useStore.getState().updateCard('c1', { content: 'ab' })
+    vi.advanceTimersByTime(500)
+    useStore.getState().setEditingCard(null)
+    vi.advanceTimersByTime(500)
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].content).toBe('')
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].content).toBe('')
+  })
+
+  it('suppressHistory 时不记录', () => {
+    dispose = initHistory()
+    useStore.setState({ suppressHistory: true })
+    useStore.getState().updateCard('c1', { title: 'X' })
+    expect(historyStore.canUndo('cv')).toBe(false)
+  })
+
+  it('粘贴是一条可撤销记录', () => {
+    dispose = initHistory()
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    useStore.getState().pasteClipboard()
+    expect(useStore.getState().canvases[0].cards.length).toBe(2)
+    vi.advanceTimersByTime(500)
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards.length).toBe(1)
+  })
+})

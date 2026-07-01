@@ -1,4 +1,5 @@
 import type { Canvas, Card, TextBox, CanvasLabel, Section, Connection } from './types'
+import { useStore } from './store'
 
 export interface CanvasSnapshot {
   cards: Card[]
@@ -87,3 +88,59 @@ class HistoryStore {
 }
 
 export const historyStore = new HistoryStore()
+
+export const IDLE_MS = 400
+
+const burstActive = new Map<string, boolean>()
+const burstTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function endBurst(id: string): void {
+  burstActive.set(id, false)
+  const t = burstTimers.get(id)
+  if (t) { clearTimeout(t); burstTimers.delete(id) }
+}
+
+function scheduleEnd(id: string): void {
+  const existing = burstTimers.get(id)
+  if (existing) clearTimeout(existing)
+  burstTimers.set(id, setTimeout(() => endBurst(id), IDLE_MS))
+}
+
+export function initHistory(): () => void {
+  const unsub = useStore.subscribe((state, prev) => {
+    if (state.suppressHistory) return
+
+    const editingNow = !!(state.editingCardId || state.editingTextId)
+    const editingBefore = !!(prev.editingCardId || prev.editingTextId)
+
+    // 编辑刚结束 → 给活动画布安排 burst 收尾（把随后的高度自适应并入同一条）
+    if (editingBefore && !editingNow && state.activeCanvasId) {
+      scheduleEnd(state.activeCanvasId)
+    }
+
+    if (state.canvases === prev.canvases) return
+
+    for (const cur of state.canvases) {
+      const before = prev.canvases.find((c) => c.id === cur.id)
+      if (!before || before === cur) continue // 新画布或该画布未变
+
+      if (burstActive.get(cur.id)) {
+        if (!editingNow) scheduleEnd(cur.id) // 已在 burst 内：仅续期（编辑期间不收尾）
+        continue
+      }
+
+      if (contentFingerprint(before) === contentFingerprint(cur)) continue // 仅 viewport 等非内容变化
+
+      historyStore.record(cur.id, snapshotCanvas(before))
+      burstActive.set(cur.id, true)
+      if (!editingNow) scheduleEnd(cur.id)
+    }
+  })
+
+  return () => {
+    unsub()
+    for (const t of burstTimers.values()) clearTimeout(t)
+    burstTimers.clear()
+    burstActive.clear()
+  }
+}
