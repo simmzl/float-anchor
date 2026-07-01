@@ -275,6 +275,7 @@ describe('copy / paste（store 集成）', () => {
       canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1', 100)] }],
       settings: { theme: 'light' } as AppSettings,
       syncDecision: null, suppressHistory: false,
+      clipboard: null, pasteCount: 0,
     })
   })
   afterEach(() => {
@@ -282,10 +283,6 @@ describe('copy / paste（store 集成）', () => {
     delete (globalThis as unknown as { window?: unknown }).window
   })
 
-  // 注：此用例须先于下面两个用例运行——copySelection/pasteClipboard 的 clipboard 是
-  // store.ts 模块级变量（非 zustand state），beforeEach 的 setState 不会重置它。
-  // Vitest 默认仅按文件隔离模块、同文件内的 it 之间共享模块状态，
-  // 因此把"未复制时应返回 null"放在任何 copySelection 调用之前，避免跨用例状态泄漏。
   it('未复制时粘贴返回 null', () => {
     expect(useStore.getState().pasteClipboard()).toBeNull()
   })

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
 import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox, SyncProvider } from './types'
-import { historyStore, snapshotCanvas, applySnapshot } from './history'
+import { historyStore, snapshotCanvas, applySnapshot, flushBurst } from './history'
 import { buildClipboard, instantiatePaste, type ClipboardPayload, type SelectionIds } from './clipboard'
 
 export function getEffectiveProvider(settings: AppSettings): SyncProvider {
@@ -46,6 +46,8 @@ interface AppState {
   imageCacheVersion: number
   showSettings: boolean
   suppressHistory: boolean
+  clipboard: ClipboardPayload | null
+  pasteCount: number
 
   loadData: () => Promise<void>
   persist: () => void
@@ -109,8 +111,6 @@ interface AppState {
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 let lastRemoteUploadAt = 0
-let clipboard: ClipboardPayload | null = null
-let pasteCount = 0
 
 const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
 const LOCAL_WEBDAV_SYNC_DELAY_MS = 2000
@@ -130,6 +130,8 @@ export const useStore = create<AppState>((set, get) => ({
   imageCacheVersion: 0,
   showSettings: false,
   suppressHistory: false,
+  clipboard: null,
+  pasteCount: 0,
 
   loadData: async () => {
     set({ suppressHistory: true })
@@ -273,6 +275,7 @@ export const useStore = create<AppState>((set, get) => ({
     set((s) => ({
       canvases: [...s.canvases, canvas],
       activeCanvasId: canvas.id,
+      pasteCount: 0,
     }))
     get().persist()
   },
@@ -306,7 +309,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   setActiveCanvas: (id) => {
-    set({ activeCanvasId: id, editingCardId: null })
+    set({ activeCanvasId: id, editingCardId: null, pasteCount: 0 })
     get().persist()
   },
 
@@ -1219,6 +1222,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!canvas) return
     const restored = historyStore.undo(activeCanvasId, snapshotCanvas(canvas))
     if (!restored) return
+    flushBurst(activeCanvasId)
     set((s) => ({
       suppressHistory: true,
       canvases: s.canvases.map((c) => (c.id === activeCanvasId ? applySnapshot(c, restored) : c)),
@@ -1236,6 +1240,7 @@ export const useStore = create<AppState>((set, get) => ({
     if (!canvas) return
     const restored = historyStore.redo(activeCanvasId, snapshotCanvas(canvas))
     if (!restored) return
+    flushBurst(activeCanvasId)
     set((s) => ({
       suppressHistory: true,
       canvases: s.canvases.map((c) => (c.id === activeCanvasId ? applySnapshot(c, restored) : c)),
@@ -1252,17 +1257,18 @@ export const useStore = create<AppState>((set, get) => ({
     if (!canvas) return
     const payload = buildClipboard(canvas, sel)
     if (!payload) return
-    clipboard = payload
-    pasteCount = 0
+    set({ clipboard: payload, pasteCount: 0 })
   },
 
   pasteClipboard: () => {
-    const { activeCanvasId } = get()
+    const { activeCanvasId, clipboard, pasteCount } = get()
     if (!activeCanvasId || !clipboard) return null
-    pasteCount += 1
-    const off = 24 * pasteCount
+    const nextCount = pasteCount + 1
+    const off = 24 * nextCount
     const inst = instantiatePaste(clipboard, off, off)
+    flushBurst(activeCanvasId)
     set((s) => ({
+      pasteCount: nextCount,
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId
           ? {

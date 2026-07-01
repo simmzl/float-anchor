@@ -100,6 +100,10 @@ function endBurst(id: string): void {
   if (t) { clearTimeout(t); burstTimers.delete(id) }
 }
 
+export function flushBurst(id: string): void {
+  endBurst(id)
+}
+
 function scheduleEnd(id: string): void {
   const existing = burstTimers.get(id)
   if (existing) clearTimeout(existing)

@@ -101,10 +101,11 @@ describe('initHistory 时间合并记录', () => {
     historyStore.clear()
     useStore.setState({
       activeCanvasId: 'cv',
-      canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1', 0)] }],
+      canvases: [{ id: 'cv', name: 'cv', cards: [{ ...mkCard('c1', 0), title: 'orig' }] }],
       settings: { theme: 'light' } as AppSettings,
       editingCardId: null, editingTextId: null,
       syncDecision: null, suppressHistory: false,
+      clipboard: null, pasteCount: 0,
     })
   })
   afterEach(() => {
@@ -162,5 +163,28 @@ describe('initHistory 时间合并记录', () => {
     vi.advanceTimersByTime(500)
     useStore.getState().undo()
     expect(useStore.getState().canvases[0].cards.length).toBe(1)
+  })
+
+  it('undo 后立即操作不丢历史（flushBurst）', () => {
+    dispose = initHistory()
+    useStore.getState().updateCard('c1', { title: 'A' })   // 记一条(before=orig), burst 开
+    useStore.getState().undo()                              // 撤销; flushBurst 清 burst
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('orig')
+    useStore.getState().updateCard('c1', { title: 'B' })   // 仍在 400ms 内; 应记新一条
+    expect(historyStore.canUndo('cv')).toBe(true)
+    useStore.getState().undo()
+    expect(useStore.getState().canvases[0].cards[0].title).toBe('orig')
+  })
+
+  it('拖动后立即粘贴，粘贴独立成一条（flushBurst）', () => {
+    dispose = initHistory()
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    useStore.getState().moveCard('c1', 20, 0)   // 记拖动一条(before: x=0), burst 开
+    useStore.getState().pasteClipboard()         // flush → 粘贴独立成一条(before: c1 在 x=20)
+    expect(useStore.getState().canvases[0].cards.length).toBe(2)
+    useStore.getState().undo()                   // 只撤销粘贴
+    const cv = useStore.getState().canvases[0]
+    expect(cv.cards.length).toBe(1)
+    expect(cv.cards[0].x).toBe(20)               // 拖动未被一起撤销
   })
 })
