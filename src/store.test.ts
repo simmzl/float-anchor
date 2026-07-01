@@ -324,3 +324,34 @@ describe('copy / paste（store 集成）', () => {
     expect(useStore.getState().pasteClipboardAt(10, 10)).toBeNull()
   })
 })
+
+describe('分享 shareId', () => {
+  const mkCanvas = () => ({ id: 'cv', name: 'cv', cards: [] })
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true), writeSettings: () => Promise.resolve(true) } }
+    useStore.setState({ activeCanvasId: 'cv', canvases: [mkCanvas()], settings: { theme: 'light' } as AppSettings, syncDecision: null })
+  })
+  afterEach(() => { vi.useRealTimers(); delete (globalThis as unknown as { window?: unknown }).window })
+
+  it('ensureShareId 生成并幂等', () => {
+    const id1 = useStore.getState().ensureShareId('cv')
+    expect(id1).toBeTruthy()
+    expect(useStore.getState().canvases[0].shareId).toBe(id1)
+    const id2 = useStore.getState().ensureShareId('cv')
+    expect(id2).toBe(id1) // 幂等
+  })
+
+  it('unshareCanvas 清除 shareId', () => {
+    useStore.getState().ensureShareId('cv')
+    useStore.getState().unshareCanvas('cv')
+    expect(useStore.getState().canvases[0].shareId).toBeUndefined()
+  })
+
+  it('setShareDomain 写入 settings', () => {
+    useStore.getState().setShareDomain('https://v.app/')
+    expect(useStore.getState().settings.shareDomain).toBe('https://v.app/')
+    useStore.getState().setShareDomain('  ')
+    expect(useStore.getState().settings.shareDomain).toBeUndefined()
+  })
+})

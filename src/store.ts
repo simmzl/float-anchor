@@ -102,6 +102,10 @@ interface AppState {
 
   saveViewport: (canvasId: string, viewport: CanvasViewport) => void
 
+  ensureShareId: (canvasId: string) => string
+  unshareCanvas: (canvasId: string) => void
+  setShareDomain: (domain?: string) => void
+
   undo: () => void
   redo: () => void
   copySelection: (sel: SelectionIds) => void
@@ -231,14 +235,14 @@ export const useStore = create<AppState>((set, get) => ({
       const s = await window.electronAPI.readSettings()
       if (s) {
         set({ settings: s })
-        document.documentElement.dataset.theme = s.theme
+        if (typeof document !== 'undefined') document.documentElement.dataset.theme = s.theme
       }
     } catch { /* ignore */ }
   },
 
   saveSettings: async (s) => {
     set({ settings: s })
-    document.documentElement.dataset.theme = s.theme
+    if (typeof document !== 'undefined') document.documentElement.dataset.theme = s.theme
     await window.electronAPI.writeSettings(s)
   },
 
@@ -1214,6 +1218,34 @@ export const useStore = create<AppState>((set, get) => ({
       ),
     }))
     get().persist()
+  },
+
+  ensureShareId: (canvasId) => {
+    const canvas = get().canvases.find((c) => c.id === canvasId)
+    if (!canvas) return ''
+    if (canvas.shareId) return canvas.shareId
+    const shareId = uuid()
+    set((s) => ({ canvases: s.canvases.map((c) => (c.id === canvasId ? { ...c, shareId } : c)) }))
+    get().persist()
+    return shareId
+  },
+
+  unshareCanvas: (canvasId) => {
+    set((s) => ({
+      canvases: s.canvases.map((c) => {
+        if (c.id !== canvasId || !c.shareId) return c
+        const next = { ...c }
+        delete next.shareId
+        return next
+      }),
+    }))
+    get().persist()
+  },
+
+  setShareDomain: (domain) => {
+    const trimmed = domain?.trim()
+    const s = { ...get().settings, shareDomain: trimmed || undefined }
+    get().saveSettings(s)
   },
 
   undo: () => {
