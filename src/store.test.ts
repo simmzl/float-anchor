@@ -304,4 +304,23 @@ describe('copy / paste（store 集成）', () => {
     const xs = useStore.getState().canvases[0].cards.map((c) => c.x).sort((a, b) => a - b)
     expect(xs).toEqual([100, 124, 148])
   })
+
+  it('pasteClipboardAt 把粘贴组左上角对齐给定坐标', () => {
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    const ids = useStore.getState().pasteClipboardAt(500, 300)
+    expect(ids).not.toBeNull()
+    const cv = useStore.getState().canvases[0]
+    const pasted = cv.cards.find((c) => c.id === ids!.cardIds[0])!
+    expect({ x: pasted.x, y: pasted.y }).toEqual({ x: 500, y: 300 }) // 原 c1 在 (100,0)=左上角 → 落到 (500,300)
+  })
+
+  it('pasteClipboardAt 不改 pasteCount（不递增）', () => {
+    useStore.getState().copySelection({ cardIds: ['c1'], labelIds: [], sectionIds: [], textIds: [] })
+    useStore.getState().pasteClipboardAt(500, 300)
+    expect(useStore.getState().pasteCount).toBe(0)
+  })
+
+  it('未复制时 pasteClipboardAt 返回 null', () => {
+    expect(useStore.getState().pasteClipboardAt(10, 10)).toBeNull()
+  })
 })

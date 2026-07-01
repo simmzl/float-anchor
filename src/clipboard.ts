@@ -81,3 +81,14 @@ export function instantiatePaste(
     },
   }
 }
+
+export function clipboardTopLeft(p: ClipboardPayload): { x: number; y: number } {
+  let minX = Infinity
+  let minY = Infinity
+  for (const c of p.cards) { minX = Math.min(minX, c.x); minY = Math.min(minY, c.y) }
+  for (const t of p.texts) { minX = Math.min(minX, t.x); minY = Math.min(minY, t.y) }
+  for (const l of p.labels) { minX = Math.min(minX, l.x); minY = Math.min(minY, l.y) }
+  for (const s of p.sections) { minX = Math.min(minX, s.x); minY = Math.min(minY, s.y) }
+  if (minX === Infinity) return { x: 0, y: 0 }
+  return { x: minX, y: minY }
+}

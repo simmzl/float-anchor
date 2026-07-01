@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildClipboard, instantiatePaste } from './clipboard'
+import { buildClipboard, instantiatePaste, clipboardTopLeft } from './clipboard'
 import type { Canvas } from './types'
+import type { ClipboardPayload } from './clipboard'
 
 const canvas: Canvas = {
   id: 'cv', name: 'cv',
@@ -61,5 +62,20 @@ describe('instantiatePaste', () => {
     expect(r.ids.cardIds).toEqual(r.cards.map((c) => c.id))
     expect(r.ids.textIds).toEqual(r.texts.map((t) => t.id))
     expect(r.ids.sectionIds).toEqual(r.sections.map((s) => s.id))
+  })
+})
+
+describe('clipboardTopLeft', () => {
+  it('返回所有实体的最小左上角', () => {
+    const p: ClipboardPayload = {
+      cards: [{ id: 'c1', title: '', content: '', x: 100, y: 60, width: 300 }],
+      texts: [{ id: 't1', text: '', x: 40, y: 200, width: 200 }],
+      labels: [], sections: [], connections: [],
+    }
+    expect(clipboardTopLeft(p)).toEqual({ x: 40, y: 60 })
+  })
+  it('全空返回 {0,0}', () => {
+    const p: ClipboardPayload = { cards: [], texts: [], labels: [], sections: [], connections: [] }
+    expect(clipboardTopLeft(p)).toEqual({ x: 0, y: 0 })
   })
 })

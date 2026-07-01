@@ -3,7 +3,7 @@ import { shallow } from 'zustand/shallow'
 import { v4 as uuid } from 'uuid'
 import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox, SyncProvider } from './types'
 import { historyStore, snapshotCanvas, applySnapshot, flushBurst } from './history'
-import { buildClipboard, instantiatePaste, type ClipboardPayload, type SelectionIds } from './clipboard'
+import { buildClipboard, instantiatePaste, clipboardTopLeft, type ClipboardPayload, type SelectionIds } from './clipboard'
 
 export function getEffectiveProvider(settings: AppSettings): SyncProvider {
   return settings.syncProvider ?? (settings.webdav?.server ? 'webdav' : 'none')
@@ -106,6 +106,7 @@ interface AppState {
   redo: () => void
   copySelection: (sel: SelectionIds) => void
   pasteClipboard: () => SelectionIds | null
+  pasteClipboardAt: (x: number, y: number) => SelectionIds | null
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -1269,6 +1270,30 @@ export const useStore = create<AppState>((set, get) => ({
     flushBurst(activeCanvasId)
     set((s) => ({
       pasteCount: nextCount,
+      canvases: s.canvases.map((c) =>
+        c.id === activeCanvasId
+          ? {
+              ...c,
+              cards: [...c.cards, ...inst.cards],
+              texts: [...(c.texts ?? []), ...inst.texts],
+              labels: [...(c.labels ?? []), ...inst.labels],
+              sections: [...(c.sections ?? []), ...inst.sections],
+              connections: [...(c.connections ?? []), ...inst.connections],
+            }
+          : c,
+      ),
+    }))
+    get().persist()
+    return inst.ids
+  },
+
+  pasteClipboardAt: (x, y) => {
+    const { activeCanvasId, clipboard } = get()
+    if (!activeCanvasId || !clipboard) return null
+    const tl = clipboardTopLeft(clipboard)
+    const inst = instantiatePaste(clipboard, x - tl.x, y - tl.y)
+    flushBurst(activeCanvasId)
+    set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId
           ? {
