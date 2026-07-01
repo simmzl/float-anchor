@@ -1192,7 +1192,6 @@ export default function CanvasView() {
             className="toolbar-share-btn"
             title="分享此画布"
             onClick={() => {
-              if (!meta) return
               if (!canShare(settings)) {
                 useStore.getState().setShowSettings(true)
                 return

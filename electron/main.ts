@@ -983,5 +983,5 @@ ipcMain.handle('github-account', async () => {
 /* ===== Open External ===== */
 
 ipcMain.handle('open-external', (_e, url: string) => {
-  if (typeof url === 'string' && /^https?:\/\//.test(url)) shell.openExternal(url)
+  if (typeof url === 'string' && /^https?:\/\//.test(url)) { void shell.openExternal(url).catch(() => {}) }
 })

@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import type { Canvas, Card } from '@/lib/types'
 import NoteCardView from './NoteCardView'
 
@@ -50,7 +50,7 @@ export default function CanvasRenderer({ canvas, shareId }: { canvas: Canvas; sh
   }, [])
 
   // 初始视图：优先使用 canvas.viewport，否则按内容包围盒居中适配（同桌面端 findDensestCenter 逻辑的简化版：全部卡片取包围盒）
-  useEffect(() => {
+  useLayoutEffect(() => {
     const vp = canvas.viewport
     const vpEl = viewportRef.current
     if (vp) {

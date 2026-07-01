@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     if (!canvas) return NextResponse.json({ error: 'not found' }, { status: 404 })
     return NextResponse.json({ canvas }, { headers: { 'Cache-Control': 'public, max-age=30' } })
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 502 })
+    console.error(e)
+    return NextResponse.json({ error: '读取失败' }, { status: 502 })
   }
 }
