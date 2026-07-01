@@ -13,7 +13,7 @@ export default function SharePage({ params }: { params: { id: string } }) {
         const { canvas } = await r.json()
         setState({ loading: false, canvas })
       })
-      .catch(() => setState({ loading: false, error: '加载失败' }))
+      .catch(() => setState({ loading: false, error: '加载失败，请稍后重试' }))
   }, [params.id])
 
   if (state.loading) return <div className="viewer-center">加载中…</div>
