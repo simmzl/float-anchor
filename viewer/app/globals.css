@@ -1,0 +1,394 @@
+/* 从桌面端 src/index.css 拷贝的展示相关样式（去掉 hover/拖拽/编辑态），供 viewer 只读渲染使用 */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f2f2f2;
+  --card-bg: #ffffff;
+  --border: #dcdcdc;
+  --text-primary: #2c2c2c;
+  --text-secondary: #777;
+  --text-muted: #aaa;
+  --accent: #4a90d9;
+  --accent-light: #e8f0fb;
+  --danger: #e55c5c;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 3px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.15);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Canvas Main ===== */
+.canvas-main {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-toolbar {
+  height: 50px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.canvas-toolbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.zoom-indicator {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Canvas Viewport ===== */
+.canvas-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  cursor: default;
+  background-color: #f6f6f6;
+  background-image: radial-gradient(circle, #d4d4d4 1px, transparent 1px);
+  background-size: 24px 24px;
+  isolation: isolate;
+}
+
+.canvas-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  contain: layout style;
+}
+
+/* ===== Note Card ===== */
+.note-card {
+  position: absolute;
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1.5px solid transparent;
+  cursor: default;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  contain: layout style paint;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 8px 18px 0;
+  gap: 8px;
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+  flex: 1;
+  word-break: break-word;
+  user-select: none;
+}
+
+.card-content {
+  padding: 8px 18px 18px;
+  overflow: visible;
+  position: relative;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  user-select: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.card-content.no-title {
+  padding-top: 12px;
+}
+
+/* ===== Markdown Body Styles ===== */
+.markdown-body h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.markdown-body h2 {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 16px 0 8px;
+  color: var(--text-primary);
+}
+
+.markdown-body h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  color: var(--text-primary);
+}
+
+.markdown-body h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 4px;
+  color: var(--text-secondary);
+}
+
+.markdown-body p {
+  margin: 10px 0;
+  line-height: 1.55;
+}
+
+.markdown-body p:first-child {
+  margin-top: 0;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.markdown-body li {
+  margin: 3px 0;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+}
+
+.markdown-body em {
+  font-style: italic;
+}
+
+.markdown-body del {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.markdown-body code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: #f0f0f0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #c7254e;
+}
+
+.markdown-body pre {
+  background: #282c34;
+  color: #abb2bf;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 4px 14px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  background: var(--accent-light);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.markdown-body hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+.markdown-body mark {
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: #f7f7f7;
+  font-weight: 600;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  display: block;
+  margin: 8px 0;
+}
+
+/* ===== Section Box ===== */
+.section-box {
+  position: absolute;
+  border: 2px dashed;
+  border-radius: var(--radius-lg);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  user-select: none;
+}
+
+.section-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.section-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ===== Canvas Label ===== */
+.canvas-label {
+  position: absolute;
+  user-select: none;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  z-index: 5;
+}
+
+.label-text {
+  color: var(--text-primary);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Canvas Text Box ===== */
+.canvas-text {
+  position: absolute;
+  user-select: none;
+  padding: 4px 6px;
+  z-index: 5;
+}
+
+.text-content {
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1em;
+}
+
+/* ===== Connections ===== */
+.connections-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.conn-line {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5;
+}
+
+/* ===== Viewer Center (加载中 / 错误 / 无效链接) ===== */
+.viewer-center {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-family: var(--font);
+}
