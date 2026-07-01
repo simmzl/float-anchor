@@ -672,6 +672,25 @@ export default function SettingsModal() {
         </div>
 
         <div className="settings-section">
+          <h3>分享</h3>
+          <p className="settings-hint">
+            在线只读分享需先启用 <b>GitHub 同步</b>，并部署查看器（见仓库 <code>viewer/README.md</code>），把 Vercel 域名填在这里。
+          </p>
+          <label className="settings-field">
+            <span>分享域名</span>
+            <input
+              type="text"
+              placeholder="https://your-viewer.vercel.app"
+              defaultValue={settings.shareDomain || ''}
+              onBlur={(e) => useStore.getState().setShareDomain(e.target.value)}
+            />
+          </label>
+          {getEffectiveProvider(settings) !== 'github' && (
+            <p className="settings-warning">当前未启用 GitHub 同步，分享按钮不可用。</p>
+          )}
+        </div>
+
+        <div className="settings-section">
           <h3>数据管理</h3>
           <div className="data-management">
             <div className="data-management-row">
