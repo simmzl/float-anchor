@@ -3,6 +3,7 @@ import { useStore, getEffectiveProvider } from './store'
 import Sidebar from './components/Sidebar'
 import CanvasView from './components/CanvasView'
 import SettingsModal from './components/SettingsModal'
+import { initHistory } from './history'
 import type { WebDAVSyncResult } from './types'
 
 const SIDEBAR_MIN = 180
@@ -146,6 +147,11 @@ export default function App() {
     return () => {
       if (backgroundStatusTimerRef.current) clearTimeout(backgroundStatusTimerRef.current)
     }
+  }, [])
+
+  useEffect(() => {
+    const dispose = initHistory()
+    return dispose
   }, [])
 
   if (!loaded) {

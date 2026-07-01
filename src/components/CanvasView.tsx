@@ -742,6 +742,37 @@ export default function CanvasView() {
       if (mod && (k === '=' || k === '+')) { e.preventDefault(); zoomAroundCenter(1.1); return }
       if (mod && k === '-') { e.preventDefault(); zoomAroundCenter(1 / 1.1); return }
       if (mod && k === '0') { e.preventDefault(); resetZoomAroundCenter(); return }
+      if (mod && !e.shiftKey && k === 'z') {
+        e.preventDefault()
+        useStore.getState().undo()
+        setSelection(emptySelection())
+        return
+      }
+      if (mod && e.shiftKey && k === 'z') {
+        e.preventDefault()
+        useStore.getState().redo()
+        setSelection(emptySelection())
+        return
+      }
+      if (mod && !e.shiftKey && k === 'c') {
+        if (selectionEmpty(selection)) return
+        e.preventDefault()
+        useStore.getState().copySelection(selIds())
+        return
+      }
+      if (mod && !e.shiftKey && k === 'v') {
+        e.preventDefault()
+        const ids = useStore.getState().pasteClipboard()
+        if (ids) {
+          setSelection({
+            cardIds: new Set(ids.cardIds),
+            labelIds: new Set(ids.labelIds),
+            sectionIds: new Set(ids.sectionIds),
+            textIds: new Set(ids.textIds),
+          })
+        }
+        return
+      }
       if (mod) return
 
       if (k === 'c') { const p = viewportCenterCanvasCoords(); addCard(p.x - 186, p.y - 40); return }
