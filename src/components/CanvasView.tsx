@@ -237,6 +237,11 @@ export default function CanvasView() {
   const [isMultiDragging, setIsMultiDragging] = useState(false)
   const multiDragStart = useRef<{ cx: number; cy: number } | null>(null)
 
+  // 稳定化单击选中回调，避免 inline arrow 每次渲染破坏 NoteCard/TextBox/SectionBox 的 React.memo
+  const selectCard = useCallback((id: string) => setSelection({ ...emptySelection(), cardIds: new Set([id]) }), [])
+  const selectText = useCallback((id: string) => setSelection({ ...emptySelection(), textIds: new Set([id]) }), [])
+  const selectSection = useCallback((id: string) => setSelection({ ...emptySelection(), sectionIds: new Set([id]) }), [])
+
   useEffect(() => {
     if (!highlightCardId) return
     const timer = setTimeout(() => setHighlightCard(null), 2000)
@@ -1196,7 +1201,7 @@ export default function CanvasView() {
           style={{ transform: 'translate3d(0,0,0) scale(1)', transformOrigin: '0 0' }}
         >
           {sections.map((sec) => (
-            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} selected={selection.sectionIds.has(sec.id)} onSelect={(id) => setSelection({ ...emptySelection(), sectionIds: new Set([id]) })} />
+            <SectionBox key={sec.id} section={sec} scale={scaleVal.current} selected={selection.sectionIds.has(sec.id)} onSelect={selectSection} />
           ))}
 
           {labels.map((label) => (
@@ -1209,7 +1214,7 @@ export default function CanvasView() {
               text={t}
               scale={scaleVal.current}
               selected={selection.textIds.has(t.id)}
-              onSelect={(id) => setSelection({ ...emptySelection(), textIds: new Set([id]) })}
+              onSelect={selectText}
             />
           ))}
 
@@ -1275,7 +1280,7 @@ export default function CanvasView() {
                 scale={scaleVal.current}
                 highlight={highlightCardId === card.id}
                 selected={selection.cardIds.has(card.id)}
-                onSelect={(id) => setSelection({ ...emptySelection(), cardIds: new Set([id]) })}
+                onSelect={selectCard}
               />
             ) : (
               <div
