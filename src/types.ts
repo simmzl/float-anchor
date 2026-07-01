@@ -62,6 +62,7 @@ export interface Canvas {
   connections?: Connection[]
   texts?: TextBox[]
   viewport?: CanvasViewport
+  shareId?: string
 }
 
 export interface AppData {
@@ -83,6 +84,7 @@ export interface AppSettings {
   webdav?: WebDAVConfig
   syncProvider?: SyncProvider
   github?: { repo: string; branch?: string }
+  shareDomain?: string
 }
 
 export interface WebDAVSyncSummary {
