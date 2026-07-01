@@ -10,6 +10,7 @@ interface Props {
   scale: number
   highlight?: boolean
   selected?: boolean
+  onSelect?: (id: string) => void
 }
 
 const remarkPlugins = [remarkGfm]
@@ -87,7 +88,7 @@ function FaCardLink({ targetId }: { targetId: string }) {
   )
 }
 
-const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, selected }: Props) {
+const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, selected, onSelect }: Props) {
   const card = useCardById(cardId)
   const isEditing = useIsEditing(cardId)
   const imageCacheVersion = useStore((s) => s.imageCacheVersion)
@@ -214,6 +215,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
     (e: React.MouseEvent) => {
       if (e.button !== 0 || !card) return
       if (selected) return
+      onSelect?.(cardId)
       e.stopPropagation()
       e.preventDefault()
       setIsDragging(true)
@@ -239,7 +241,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)
     },
-    [cardId, card?.x, card?.y, scale, moveCard, selected],
+    [cardId, card?.x, card?.y, scale, moveCard, selected, onSelect],
   )
 
   const handleDoubleClick = useCallback(

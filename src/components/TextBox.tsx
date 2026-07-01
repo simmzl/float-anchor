@@ -6,9 +6,10 @@ interface Props {
   text: TextBoxType
   scale: number
   selected?: boolean
+  onSelect?: (id: string) => void
 }
 
-const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, selected }: Props) {
+const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, selected, onSelect }: Props) {
   const updateText = useStore((s) => s.updateText)
   const deleteText = useStore((s) => s.deleteText)
   const moveText = useStore((s) => s.moveText)
@@ -84,6 +85,7 @@ const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, sel
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isEditing || e.button !== 0) return
     if (selected) return
+    onSelect?.(text.id)
     e.stopPropagation()
     e.preventDefault()
     setIsDragging(true)
@@ -107,7 +109,7 @@ const TextBoxComponent = React.memo(function TextBoxComponent({ text, scale, sel
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [isEditing, text.id, text.x, text.y, scale, moveText, selected])
+  }, [isEditing, text.id, text.x, text.y, scale, moveText, selected, onSelect])
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return

@@ -1174,7 +1174,13 @@ export default function CanvasView() {
           ))}
 
           {texts.map((t) => (
-            <TextBoxComponent key={t.id} text={t} scale={scaleVal.current} selected={selection.textIds.has(t.id)} />
+            <TextBoxComponent
+              key={t.id}
+              text={t}
+              scale={scaleVal.current}
+              selected={selection.textIds.has(t.id)}
+              onSelect={(id) => setSelection({ ...emptySelection(), textIds: new Set([id]) })}
+            />
           ))}
 
           <svg className="connections-layer">
@@ -1239,6 +1245,7 @@ export default function CanvasView() {
                 scale={scaleVal.current}
                 highlight={highlightCardId === card.id}
                 selected={selection.cardIds.has(card.id)}
+                onSelect={(id) => setSelection({ ...emptySelection(), cardIds: new Set([id]) })}
               />
             ) : (
               <div
