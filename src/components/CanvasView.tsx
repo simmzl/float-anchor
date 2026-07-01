@@ -241,6 +241,7 @@ export default function CanvasView() {
   const selectCard = useCallback((id: string) => setSelection({ ...emptySelection(), cardIds: new Set([id]) }), [])
   const selectText = useCallback((id: string) => setSelection({ ...emptySelection(), textIds: new Set([id]) }), [])
   const selectSection = useCallback((id: string) => setSelection({ ...emptySelection(), sectionIds: new Set([id]) }), [])
+  const selectLabel = useCallback((id: string) => setSelection({ ...emptySelection(), labelIds: new Set([id]) }), [])
 
   useEffect(() => {
     if (!highlightCardId) return
@@ -1205,7 +1206,7 @@ export default function CanvasView() {
           ))}
 
           {labels.map((label) => (
-            <CanvasLabelComponent key={label.id} label={label} scale={scaleVal.current} selected={selection.labelIds.has(label.id)} />
+            <CanvasLabelComponent key={label.id} label={label} scale={scaleVal.current} selected={selection.labelIds.has(label.id)} onSelect={selectLabel} />
           ))}
 
           {texts.map((t) => (

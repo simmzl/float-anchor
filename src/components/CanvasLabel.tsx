@@ -6,6 +6,7 @@ interface Props {
   label: LabelType
   scale: number
   selected?: boolean
+  onSelect?: (id: string) => void
 }
 
 const LEVEL_SIZES: Record<number, { fontSize: number; fontWeight: number }> = {
@@ -22,7 +23,7 @@ function parseMarkdownHeading(text: string): { level: 0 | 1 | 2 | 3 | 4; cleanTe
   return { level: 0, cleanText: text }
 }
 
-const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, scale, selected }: Props) {
+const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, scale, selected, onSelect }: Props) {
   const updateLabel = useStore((s) => s.updateLabel)
   const deleteLabel = useStore((s) => s.deleteLabel)
   const moveLabel = useStore((s) => s.moveLabel)
@@ -70,6 +71,7 @@ const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, s
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isEditing || e.button !== 0) return
     if (selected) return
+    onSelect?.(label.id)
     e.stopPropagation()
     e.preventDefault()
     setIsDragging(true)
@@ -93,7 +95,7 @@ const CanvasLabelComponent = React.memo(function CanvasLabelComponent({ label, s
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [isEditing, label.id, label.x, label.y, scale, moveLabel, selected])
+  }, [isEditing, label.id, label.x, label.y, scale, moveLabel, selected, onSelect])
 
   return (
     <div
