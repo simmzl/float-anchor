@@ -41,3 +41,49 @@ export function applySnapshot(canvas: Canvas, snap: CanvasSnapshot): Canvas {
     connections: clone(snap.connections),
   }
 }
+
+export const MAX_HISTORY = 50
+
+interface Stacks { undo: CanvasSnapshot[]; redo: CanvasSnapshot[] }
+
+class HistoryStore {
+  private map = new Map<string, Stacks>()
+
+  private stacks(id: string): Stacks {
+    let s = this.map.get(id)
+    if (!s) { s = { undo: [], redo: [] }; this.map.set(id, s) }
+    return s
+  }
+
+  record(id: string, snap: CanvasSnapshot): void {
+    const s = this.stacks(id)
+    s.undo.push(snap)
+    if (s.undo.length > MAX_HISTORY) s.undo.shift()
+    s.redo = []
+  }
+
+  undo(id: string, current: CanvasSnapshot): CanvasSnapshot | null {
+    const s = this.stacks(id)
+    const prev = s.undo.pop()
+    if (!prev) return null
+    s.redo.push(current)
+    if (s.redo.length > MAX_HISTORY) s.redo.shift()
+    return prev
+  }
+
+  redo(id: string, current: CanvasSnapshot): CanvasSnapshot | null {
+    const s = this.stacks(id)
+    const next = s.redo.pop()
+    if (!next) return null
+    s.undo.push(current)
+    if (s.undo.length > MAX_HISTORY) s.undo.shift()
+    return next
+  }
+
+  canUndo(id: string): boolean { return this.stacks(id).undo.length > 0 }
+  canRedo(id: string): boolean { return this.stacks(id).redo.length > 0 }
+  clearCanvas(id: string): void { this.map.delete(id) }
+  clear(): void { this.map.clear() }
+}
+
+export const historyStore = new HistoryStore()
