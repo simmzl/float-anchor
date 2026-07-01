@@ -7,9 +7,11 @@ import SectionBox from './SectionBox'
 import ContextMenu from './ContextMenu'
 import MoveToModal from './MoveToModal'
 import ConfirmModal from './ConfirmModal'
+import SharePopover from './SharePopover'
 import type { Card, Connection, Section, CanvasLabel, TextBox } from '../types'
 import type { MenuItem } from './ContextMenu'
 import { scKey } from '../shortcuts'
+import { buildShareUrl, canShare } from '../share'
 
 const MIN_SCALE = 0.15
 const MAX_SCALE = 3
@@ -226,6 +228,7 @@ export default function CanvasView() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const [moveModalCardId, setMoveModalCardId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] } | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null)
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null)
   const [hoveredConn, setHoveredConn] = useState<string | null>(null)
@@ -1185,6 +1188,21 @@ export default function CanvasView() {
       <div className="canvas-toolbar">
         <h2 className="canvas-toolbar-title">{meta.name}</h2>
         <div className="toolbar-right">
+          <button
+            className="toolbar-share-btn"
+            title="分享此画布"
+            onClick={() => {
+              if (!meta) return
+              if (!canShare(settings)) {
+                useStore.getState().setShowSettings(true)
+                return
+              }
+              const id = useStore.getState().ensureShareId(meta.id)
+              const url = buildShareUrl(settings.shareDomain!, id)
+              navigator.clipboard.writeText(url).catch(() => {})
+              setShareUrl(url)
+            }}
+          >分享</button>
           <span ref={zoomRef} className="zoom-indicator">100%</span>
         </div>
       </div>
@@ -1354,6 +1372,16 @@ export default function CanvasView() {
             setConfirmDelete(null)
           }}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {shareUrl && meta && (
+        <SharePopover
+          url={shareUrl}
+          onCopy={() => navigator.clipboard.writeText(shareUrl).catch(() => {})}
+          onOpen={() => window.electronAPI.openExternal(shareUrl)}
+          onUnshare={() => { useStore.getState().unshareCanvas(meta.id); setShareUrl(null) }}
+          onClose={() => setShareUrl(null)}
         />
       )}
     </main>

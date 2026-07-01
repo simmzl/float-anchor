@@ -2564,6 +2564,103 @@ input {
   outline-color: var(--danger);
 }
 
+/* ===== Share Popover ===== */
+.share-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modal-bg-in 0.15s ease-out;
+}
+
+.share-popover {
+  background: var(--card-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 360px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: modal-box-in 0.2s ease-out;
+}
+
+.share-popover-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.share-popover-url {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.share-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.share-popover-actions button {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.12s;
+}
+
+.share-popover-actions button:hover {
+  background: var(--accent-light);
+}
+
+.share-popover-actions button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.share-popover-actions button.danger:hover {
+  opacity: 0.9;
+}
+
+.share-popover-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ===== Toolbar Share Button ===== */
+.toolbar-share-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.12s;
+}
+
+.toolbar-share-btn:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
 /* ===== Settings: Keyboard Shortcuts ===== */
 .shortcut-list {
   display: flex;

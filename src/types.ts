@@ -189,6 +189,7 @@ declare global {
       githubAccount: () => Promise<{ login: string | null }>
       saveImage: (bytes: ArrayBuffer, mime?: string) => Promise<{ name?: string; error?: string }>
       migrateEmbeddedImages: () => Promise<{ success: boolean; count?: number; beforeBytes?: number; afterBytes?: number; error?: string }>
+      openExternal: (url: string) => Promise<void>
     }
   }
 }
