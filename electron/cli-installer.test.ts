@@ -18,9 +18,21 @@ describe('cli-installer', () => {
     Object.defineProperty(process, 'platform', { value: orig })
     expect(file.length).toBeGreaterThan(0)
   })
+  it('builds a cmd /c command on win32', () => {
+    const orig = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    const { file, args } = buildLoginShellCommand('where npm')
+    Object.defineProperty(process, 'platform', { value: orig })
+    expect(file).toBe('cmd')
+    expect(args).toEqual(['/c', 'where npm'])
+  })
   it('parseWhich trims and nulls empty', () => {
     expect(parseWhich('/usr/local/bin/fa\n')).toBe('/usr/local/bin/fa')
     expect(parseWhich('   ')).toBeNull()
+  })
+  it('parseWhich returns the last non-empty line (tolerates rc-file banners)', () => {
+    expect(parseWhich('welcome to my shell\n/usr/local/bin/npm\n')).toBe('/usr/local/bin/npm')
+    expect(parseWhich('\n\n/opt/homebrew/bin/fa\n\n')).toBe('/opt/homebrew/bin/fa')
   })
   it('builds install/uninstall commands', () => {
     expect(installArgs('/a b/cli')).toBe('npm install -g "/a b/cli"')

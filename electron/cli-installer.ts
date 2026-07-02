@@ -11,8 +11,10 @@ export function buildLoginShellCommand(cmd: string): { file: string; args: strin
 }
 
 export function parseWhich(stdout: string): string | null {
-  const t = stdout.trim()
-  return t.length > 0 ? t.split('\n')[0].trim() : null
+  // 取最后一条非空行：登录 shell(`-ilc`)会 source .zshrc 等，可能在真实路径前打印 banner，
+  // 而 `command -v` / `where` 的结果总在最后。
+  const lines = stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  return lines.length > 0 ? lines[lines.length - 1] : null
 }
 
 export function installArgs(cliDir: string): string { return `npm install -g "${cliDir}"` }
