@@ -96,7 +96,7 @@ interface AppState {
   moveSection: (sectionId: string, dx: number, dy: number) => void
   autoFitSection: (sectionId: string) => void
   compactSection: (sectionId: string) => void
-  arrangeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => void
+  arrangeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }, heightHints?: Record<string, number>) => void
   deleteUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => void
   nudgeUnits: (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }, dx: number, dy: number) => void
 
@@ -1015,11 +1015,13 @@ export const useStore = create<AppState>((set, get) => ({
     get().persist()
   },
 
-  arrangeUnits: (ids) => {
+  arrangeUnits: (ids, heightHints) => {
     const { activeCanvasId } = get()
     if (!activeCanvasId) return
     const canvas = get().canvases.find((c) => c.id === activeCanvasId)
     if (!canvas) return
+    // 优先用调用方传入的实测渲染高度（避免 undefined/过时的 card.height 导致排布重叠）
+    const measuredH = (id: string, fallback: number) => heightHints?.[id] ?? fallback
 
     const cardIds = new Set(ids.cardIds)
     const labelIds = new Set(ids.labelIds)
@@ -1035,17 +1037,17 @@ export const useStore = create<AppState>((set, get) => ({
     type Unit = { id: string; x: number; y: number; w: number; h: number }
     const units: Unit[] = []
     for (const t of canvas.texts ?? []) {
-      if (textIds.has(t.id)) units.push({ id: t.id, x: t.x, y: t.y, w: t.width, h: t.height ?? 24 })
+      if (textIds.has(t.id)) units.push({ id: t.id, x: t.x, y: t.y, w: t.width, h: measuredH(t.id, t.height ?? 24) })
     }
     for (const l of canvas.labels ?? []) {
-      if (labelIds.has(l.id)) units.push({ id: l.id, x: l.x, y: l.y, w: l.width, h: 40 })
+      if (labelIds.has(l.id)) units.push({ id: l.id, x: l.x, y: l.y, w: l.width, h: measuredH(l.id, 40) })
     }
     for (const s of canvas.sections ?? []) {
-      if (sectionIds.has(s.id)) units.push({ id: s.id, x: s.x, y: s.y, w: s.width, h: s.height })
+      if (sectionIds.has(s.id)) units.push({ id: s.id, x: s.x, y: s.y, w: s.width, h: measuredH(s.id, s.height) })
     }
     for (const c of canvas.cards) {
       if (cardIds.has(c.id) && !memberOfSelected.has(c.id)) {
-        units.push({ id: c.id, x: c.x, y: c.y, w: c.width, h: c.height ?? 200 })
+        units.push({ id: c.id, x: c.x, y: c.y, w: c.width, h: measuredH(c.id, c.height ?? 200) })
       }
     }
 

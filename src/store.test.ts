@@ -325,6 +325,69 @@ describe('copy / paste（store 集成）', () => {
   })
 })
 
+describe('arrangeUnits 按实测高度排布（修复 undefined 高度重叠）', () => {
+  const mkCard = (id: string, x: number, y: number, h?: number): Card =>
+    ({ id, title: '', content: '', x, y, width: 300, ...(h != null ? { height: h } : {}) })
+
+  const EMPTY = { labelIds: [], sectionIds: [], textIds: [] }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData: () => Promise.resolve(true) } }
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  const setup = (cards: Card[]) => {
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null,
+    })
+  }
+
+  it('传入实测高度 → 同列按真高+GAP 堆叠，不重叠', () => {
+    // 三张同列卡片，height 均 undefined（CLI 批量写入场景）
+    setup([mkCard('c1', 100, 50), mkCard('c2', 100, 300), mkCard('c3', 100, 700)])
+    useStore.getState().arrangeUnits(
+      { cardIds: ['c1', 'c2', 'c3'], ...EMPTY },
+      { c1: 100, c2: 400, c3: 150 },
+    )
+    const cv = useStore.getState().canvases[0]
+    const g = (id: string) => cv.cards.find((c) => c.id === id)!
+    // originY=50, GAP=20 → c1=50, c2=50+100+20=170, c3=170+400+20=590
+    expect(g('c1').y).toBe(50)
+    expect(g('c2').y).toBe(170)
+    expect(g('c3').y).toBe(590)
+    // 同列 x 对齐
+    expect(g('c1').x).toBe(g('c2').x)
+    expect(g('c2').x).toBe(g('c3').x)
+  })
+
+  it('未传实测高度 → 退回 card.height ?? 200（向后兼容）', () => {
+    setup([mkCard('c1', 100, 50, 120), mkCard('c2', 100, 300, 300)])
+    useStore.getState().arrangeUnits({ cardIds: ['c1', 'c2'], ...EMPTY })
+    const cv = useStore.getState().canvases[0]
+    const g = (id: string) => cv.cards.find((c) => c.id === id)!
+    // c1 高 120 → c2 = 50+120+20 = 190
+    expect(g('c2').y).toBe(190)
+  })
+
+  it('实测高度只覆盖给定卡片，其余用存储高度', () => {
+    setup([mkCard('c1', 100, 50), mkCard('c2', 100, 300, 250)])
+    useStore.getState().arrangeUnits(
+      { cardIds: ['c1', 'c2'], ...EMPTY },
+      { c1: 90 }, // 只给 c1 实测高
+    )
+    const cv = useStore.getState().canvases[0]
+    // c1 用实测 90 → c2 = 50+90+20 = 160
+    expect(cv.cards.find((c) => c.id === 'c2')!.y).toBe(160)
+  })
+})
+
 describe('updateCard 无变化时短路，不触发持久化/同步（层2）', () => {
   const mkCard = (id: string): Card =>
     ({ id, title: 'A', content: 'X', x: 10, y: 20, width: 300, height: 150 })

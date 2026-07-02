@@ -163,6 +163,17 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
     })
   }, [card?.content, card?.title, card?.width])
 
+  // 自愈：卡片无 height（如 CLI 批量写入 / 导入、从未编辑）时，渲染后测量自然高度并写回。
+  // 让自动排布、culling 占位、后续操作都能拿到真实高度，而非兜底的 200/60。
+  useEffect(() => {
+    if (isEditing || !card || card.height != null) return
+    const raf = requestAnimationFrame(() => {
+      const h = measureHeight()
+      if (h != null) updateCard(cardId, { height: h })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [cardId, card?.height, isEditing, measureHeight, updateCard])
+
   const debouncedSave = useCallback(
     (t: string, c: string) => {
       clearTimeout(saveTimer.current)

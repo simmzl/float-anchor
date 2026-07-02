@@ -246,6 +246,21 @@ export default function CanvasView() {
   const selectSection = useCallback((id: string) => setSelection({ ...emptySelection(), sectionIds: new Set([id]) }), [])
   const selectLabel = useCallback((id: string) => setSelection({ ...emptySelection(), labelIds: new Set([id]) }), [])
 
+  // 排布前量取选中卡片的真实渲染高度（所见即所得），避免存储 height 缺失/过时导致重叠。
+  // 屏外被 culling 的卡片量不到 → 交给 arrangeUnits 退回 card.height ?? 200。
+  const arrangeWithMeasured = useCallback(
+    (ids: { cardIds: string[]; labelIds: string[]; sectionIds: string[]; textIds: string[] }) => {
+      const s = scaleVal.current || 1
+      const heightHints: Record<string, number> = {}
+      for (const id of ids.cardIds) {
+        const el = document.querySelector(`[data-card-id="${CSS.escape(id)}"]`) as HTMLElement | null
+        if (el) heightHints[id] = el.getBoundingClientRect().height / s
+      }
+      arrangeUnits(ids, heightHints)
+    },
+    [arrangeUnits],
+  )
+
   useEffect(() => {
     if (!highlightCardId) return
     const timer = setTimeout(() => setHighlightCard(null), 2000)
@@ -787,7 +802,7 @@ export default function CanvasView() {
       if (k === 'c') { const p = viewportCenterCanvasCoords(); addCard(p.x - 186, p.y - 40); return }
       if (k === 't') { const p = viewportCenterCanvasCoords(); addText(p.x - 150, p.y - 20); return }
       if (k === 'r') { const p = viewportCenterCanvasCoords(); addSection(p.x - 300, p.y - 200); return }
-      if (k === 'l') { e.preventDefault(); arrangeUnits(selIds()); return }
+      if (k === 'l') { e.preventDefault(); arrangeWithMeasured(selIds()); return }
       if (k === 'f') {
         if (selection.sectionIds.size === 0) return
         e.preventDefault()
@@ -824,7 +839,7 @@ export default function CanvasView() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [connectingFrom, connections, deleteConnection, selection, confirmDelete, arrangeUnits, compactSection, addCard, addText, addSection, setEditingCard, setEditingText, nudgeUnits, zoomAroundCenter, resetZoomAroundCenter, viewportCenterCanvasCoords])
+  }, [connectingFrom, connections, deleteConnection, selection, confirmDelete, arrangeWithMeasured, compactSection, addCard, addText, addSection, setEditingCard, setEditingText, nudgeUnits, zoomAroundCenter, resetZoomAroundCenter, viewportCenterCanvasCoords])
 
   useEffect(() => {
     if (!connectingFrom) {
@@ -875,7 +890,7 @@ export default function CanvasView() {
             label: '自动排布',
             shortcut: scKey('arrange'),
             icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
-            onClick: () => arrangeUnits({
+            onClick: () => arrangeWithMeasured({
               cardIds: [...selection.cardIds],
               labelIds: [...selection.labelIds],
               sectionIds: [...selection.sectionIds],
@@ -1027,7 +1042,7 @@ export default function CanvasView() {
       },
     )
     setCtxMenu({ x: e.clientX, y: e.clientY, items: blankItems })
-  }, [cards, sections, labels, texts, selection, addCard, addLabel, addText, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection, arrangeUnits, setSelection])
+  }, [cards, sections, labels, texts, selection, addCard, addLabel, addText, addSection, deleteCard, setEditingCard, updateCard, toCanvasCoords, connectingFrom, compactSection, arrangeWithMeasured, setSelection])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
