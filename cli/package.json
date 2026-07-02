@@ -1,0 +1,17 @@
+{
+  "name": "float-anchor-cli",
+  "version": "1.0.0",
+  "description": "FloatAnchor 命令行工具",
+  "type": "module",
+  "bin": { "fa": "dist/fa.js" },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "commander": "^12.1.0",
+    "esbuild": "^0.23.1",
+    "typescript": "^5.4.2",
+    "vitest": "^2.1.9"
+  }
+}

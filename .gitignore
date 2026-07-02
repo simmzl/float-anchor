@@ -8,5 +8,9 @@ Thumbs.db
 build/icon.iconset/
 build/icon-solid.png
 
+# CLI build artifacts
+cli/dist/
+cli/node_modules/
+
 # 流程产物（设计/计划文档），不纳入版本库
 docs/
