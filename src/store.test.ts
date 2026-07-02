@@ -325,6 +325,65 @@ describe('copy / paste（store 集成）', () => {
   })
 })
 
+describe('updateCard 无变化时短路，不触发持久化/同步（层2）', () => {
+  const mkCard = (id: string): Card =>
+    ({ id, title: 'A', content: 'X', x: 10, y: 20, width: 300, height: 150 })
+
+  let writeData: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    writeData = vi.fn(() => Promise.resolve(true))
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData } }
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards: [mkCard('c1')] }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null,
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('patch 与现值完全相同（title/content）→ 不写盘', () => {
+    useStore.getState().updateCard('c1', { title: 'A', content: 'X' })
+    vi.advanceTimersByTime(600)
+    expect(writeData).not.toHaveBeenCalled()
+  })
+
+  it('patch 与现值相同（height）→ 不写盘', () => {
+    useStore.getState().updateCard('c1', { height: 150 })
+    vi.advanceTimersByTime(600)
+    expect(writeData).not.toHaveBeenCalled()
+  })
+
+  it('无变化的 patch 不改变卡片对象引用（不触发无谓渲染）', () => {
+    const before = useStore.getState().canvases[0].cards[0]
+    useStore.getState().updateCard('c1', { title: 'A' })
+    expect(useStore.getState().canvases[0].cards[0]).toBe(before)
+  })
+
+  it('patch 确有变化 → 仍写盘一次（防回归）', () => {
+    useStore.getState().updateCard('c1', { title: 'B' })
+    vi.advanceTimersByTime(600)
+    expect(writeData).toHaveBeenCalledTimes(1)
+  })
+
+  it('部分字段变化（title 未变、height 变了）→ 写盘', () => {
+    useStore.getState().updateCard('c1', { title: 'A', height: 300 })
+    vi.advanceTimersByTime(600)
+    expect(writeData).toHaveBeenCalledTimes(1)
+  })
+
+  it('目标卡片不存在 → 不写盘、不报错', () => {
+    useStore.getState().updateCard('不存在', { title: 'Z' })
+    vi.advanceTimersByTime(600)
+    expect(writeData).not.toHaveBeenCalled()
+  })
+})
+
 describe('分享 shareId', () => {
   const mkCanvas = () => ({ id: 'cv', name: 'cv', cards: [] })
   beforeEach(() => {

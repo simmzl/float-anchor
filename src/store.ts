@@ -345,8 +345,18 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   updateCard: (cardId, patch) => {
-    const { activeCanvasId } = get()
+    const { activeCanvasId, canvases } = get()
     if (!activeCanvasId) return
+    const current = canvases
+      .find((c) => c.id === activeCanvasId)
+      ?.cards.find((card) => card.id === cardId)
+    if (!current) return
+    // patch 每个字段都与现值相等 → 无变化，跳过 set/persist，
+    // 避免无谓渲染与"打开再关闭卡片不改动也误触发同步"（Card 全为原始字段，浅比较即可）
+    const changed = (Object.keys(patch) as (keyof Card)[]).some(
+      (k) => patch[k] !== current[k],
+    )
+    if (!changed) return
     set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId

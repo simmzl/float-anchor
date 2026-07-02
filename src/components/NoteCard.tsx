@@ -3,6 +3,7 @@ import ReactMarkdown, { Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { useStore, useCardById, useIsEditing, useCardActions } from '../store'
+import { shouldCommitHeight } from '../card-measure'
 import RichEditor from './RichEditor'
 
 interface Props {
@@ -139,10 +140,11 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
       wasEditing.current = false
       requestAnimationFrame(() => {
         const h = measureHeight()
-        if (h != null) updateCard(cardId, { height: h })
+        // 仅当高度确有变化（超过 2px 容差）才写回，避免"开关编辑但未改动"误触发持久化/同步
+        if (shouldCommitHeight(h, card?.height)) updateCard(cardId, { height: h })
       })
     }
-  }, [isEditing, cardId, updateCard, measureHeight])
+  }, [isEditing, cardId, updateCard, measureHeight, card?.height])
 
   const prevContent = useRef(card?.content)
   const prevTitle = useRef(card?.title)

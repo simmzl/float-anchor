@@ -11,6 +11,7 @@ import { extractStoredImageName } from './sync/image-names'
 import { resolveExt, hashName, rewriteEmbeddedImages } from './sync/image-store'
 import { createNodeLocalStore } from './sync/local-store'
 import { reconcileState, resolveConflict } from './sync/engine'
+import { prepareDataWrite } from './sync/data-write'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import { createGitHubAdapter } from './sync/github-adapter'
 import { initGitHubAuth, saveGitHubToken, readGitHubToken, clearGitHubToken, hasGitHubToken } from './sync/github-auth'
@@ -400,25 +401,18 @@ ipcMain.handle('write-data', async (_event, data: unknown) => {
   try {
     const { dataFile: file } = getDataPaths()
     ensureDataDir()
-    const dataToWrite = (data && typeof data === 'object' && !Array.isArray(data))
-      ? { ...(data as Record<string, unknown>) }
-      : data
 
-    if (
-      dataToWrite &&
-      typeof dataToWrite === 'object' &&
-      !Array.isArray(dataToWrite) &&
-      typeof (dataToWrite as Record<string, unknown>)._syncTimestamp !== 'number' &&
-      fs.existsSync(file)
-    ) {
-      try {
-        const writableData = dataToWrite as Record<string, unknown>
-        const existing = JSON.parse(fs.readFileSync(file, 'utf-8'))
-        if (typeof existing?._syncTimestamp === 'number') {
-          writableData._syncTimestamp = existing._syncTimestamp
-        }
-      } catch {}
+    let existing: any = null
+    if (fs.existsSync(file)) {
+      try { existing = JSON.parse(fs.readFileSync(file, 'utf-8')) } catch { existing = null }
     }
+
+    // 回填 _syncTimestamp（渲染层不传）+ 判断内容是否真的变化
+    const { changed, data: dataToWrite } = prepareDataWrite(data, existing)
+
+    // 内容(canvases+activeCanvasId)与磁盘一致 → 不重写文件（mtime 不变，避免误触发同步）。
+    // 返回 false：persist() 的 `if (!saved) return` 会据此跳过后续同步调度。
+    if (!changed) return false
 
     fs.writeFileSync(file, JSON.stringify(dataToWrite, null, 2), 'utf-8')
     return true
