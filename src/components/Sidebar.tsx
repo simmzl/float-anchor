@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useStore } from '../store'
 import { shallow } from 'zustand/shallow'
 import SyncStatusIndicator from './SyncStatusIndicator'
+import ConfirmModal from './ConfirmModal'
 
 function UpdateBanner() {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; downloadUrl: string; assetName: string } | null>(null)
@@ -128,6 +129,7 @@ export default function Sidebar({ width }: { width?: number }) {
   const [newName, setNewName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
   const addInputRef = useRef<HTMLInputElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
 
@@ -160,7 +162,8 @@ export default function Sidebar({ width }: { width?: number }) {
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     if (canvases.length <= 1) return
-    deleteCanvas(id)
+    const target = canvases.find((c) => c.id === id)
+    setPendingDelete({ id, name: target?.name ?? '' })
   }
 
   const handleDoubleClick = (id: string, name: string) => {
@@ -169,6 +172,7 @@ export default function Sidebar({ width }: { width?: number }) {
   }
 
   return (
+    <>
     <aside className="sidebar" style={width ? { width } : undefined}>
       <div className="sidebar-header">
         <div className="sidebar-logo">
@@ -291,5 +295,15 @@ export default function Sidebar({ width }: { width?: number }) {
         <SyncStatusIndicator />
       </div>
     </aside>
+    {pendingDelete && (
+      <ConfirmModal
+        message={`确定删除画布「${pendingDelete.name}」吗？将永久删除该画布的全部卡片、文本、分区、标签和连线，且无法撤销（Cmd+Z 不可恢复）。`}
+        confirmText="删除画布"
+        danger
+        onConfirm={() => { deleteCanvas(pendingDelete.id); setPendingDelete(null) }}
+        onCancel={() => setPendingDelete(null)}
+      />
+    )}
+    </>
   )
 }
