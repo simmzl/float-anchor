@@ -1011,8 +1011,10 @@ function installSkillFiles(): void {
     const src = bundledSkillFile(cliDir())
     if (!fs.existsSync(src)) { console.error('skill 源缺失:', src); return }
     for (const dir of skillInstallDirs(os.homedir(), process.env)) {
-      fs.mkdirSync(dir, { recursive: true })
-      fs.copyFileSync(src, path.join(dir, 'SKILL.md'))
+      try {
+        fs.mkdirSync(dir, { recursive: true })
+        fs.copyFileSync(src, path.join(dir, 'SKILL.md'))
+      } catch (e) { console.error('skill 复制失败:', dir, e) }
     }
   } catch (err) { console.error('installSkillFiles failed:', err) }
 }

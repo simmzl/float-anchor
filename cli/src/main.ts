@@ -38,7 +38,7 @@ export function buildProgram(): Command {
 export function isEntrypoint(argv1: string | undefined, metaUrl: string): boolean {
   if (!argv1) return false
   try {
-    return realpathSync(argv1) === fileURLToPath(metaUrl)
+    return realpathSync(argv1) === realpathSync(fileURLToPath(metaUrl))
   } catch {
     return false
   }

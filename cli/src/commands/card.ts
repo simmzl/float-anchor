@@ -33,7 +33,7 @@ export function registerCard(program: Command) {
 
   card.command('set <ref>').description('修改卡片字段')
     .option('--canvas <ref>', '目标画布(id/名字)').option('--title <t>', '卡片标题').option('--content <m>', '正文(markdown)；传 - 从 stdin 读')
-    .option('--x <n>', 'X 坐标(像素)；与 --y 同时省略则自动布局').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
+    .option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
     .action((ref: string, o: any) => {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
