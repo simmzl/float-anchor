@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore, getEffectiveProvider } from '../store'
 import type { WebDAVConfig, WebDAVSyncResolution, WebDAVSyncResult, WebDAVSyncSummary } from '../types'
 import { SHORTCUTS, scKey } from '../shortcuts'
+import { cliMessage, type CliState } from './cliStatus'
 
 export default function SettingsModal() {
   const settings = useStore((s) => s.settings)
@@ -22,6 +23,22 @@ export default function SettingsModal() {
   const [clearMessage, setClearMessage] = useState('')
   const [migrateStatus, setMigrateStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [migrateMessage, setMigrateMessage] = useState('')
+
+  const [cli, setCli] = useState<CliState>({ loading: true, installed: false })
+  useEffect(() => {
+    window.electronAPI.cliStatus().then((r) => setCli({ loading: false, installed: r.installed, path: r.path }))
+      .catch(() => setCli({ loading: false, installed: false, error: '检测失败' }))
+  }, [])
+  const doInstall = async () => {
+    setCli((s) => ({ ...s, busy: true, error: undefined }))
+    const r = await window.electronAPI.cliInstall()
+    setCli({ loading: false, installed: r.success, path: r.path, error: r.success ? undefined : r.error, busy: false })
+  }
+  const doUninstall = async () => {
+    setCli((s) => ({ ...s, busy: true, error: undefined }))
+    const r = await window.electronAPI.cliUninstall()
+    setCli({ loading: false, installed: r.success ? false : true, error: r.success ? undefined : r.error, busy: false })
+  }
 
   const CLEAR_CONFIRM_TEXT = '我已明确该操作会清空所有内容，执行'
   const formatBackupTime = (ts?: number) => ts ? new Date(ts).toLocaleString('zh-CN') : '未知时间'
@@ -688,6 +705,14 @@ export default function SettingsModal() {
           {getEffectiveProvider(settings) !== 'github' && (
             <p className="settings-warning">当前未启用 GitHub 同步，分享按钮不可用。</p>
           )}
+        </div>
+
+        <div className="settings-section">
+          <h3>命令行工具（CLI）</h3>
+          <p className="cli-status">{cliMessage(cli)}</p>
+          {!cli.installed
+            ? <button className="data-btn" disabled={cli.loading || cli.busy} onClick={doInstall}>{cli.busy ? '安装中…' : '安装 fa 命令'}</button>
+            : <button className="data-btn danger-btn" disabled={cli.busy} onClick={doUninstall}>{cli.busy ? '卸载中…' : '卸载'}</button>}
         </div>
 
         <div className="settings-section">
