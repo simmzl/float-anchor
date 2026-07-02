@@ -30,6 +30,10 @@ describe('loadAppData', () => {
     writeFileSync(file(), JSON.stringify({ canvases: [{ id: 'a', name: 'X', cards: [] }], activeCanvasId: 'a' }))
     expect(loadAppData(file()).canvases[0].name).toBe('X')
   })
+  it('throws a path-tagged error on corrupt JSON', () => {
+    writeFileSync(file(), '{ not json')
+    expect(() => loadAppData(file())).toThrow(file())
+  })
 })
 
 describe('saveAppData', () => {
@@ -53,5 +57,10 @@ describe('saveAppData', () => {
   it('writes when app running but forced', () => {
     saveAppData(file(), { canvases: [], activeCanvasId: null } as any, { isAppRunning: () => true, force: true })
     expect(existsSync(file())).toBe(true)
+  })
+  it('throws a friendly error when the data directory does not exist', () => {
+    const missing = join(dir, 'nope', 'float-anchor.json')
+    expect(() => saveAppData(missing, { canvases: [], activeCanvasId: null } as any, { isAppRunning: () => false }))
+      .toThrow('未找到 App 数据目录')
   })
 })

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import type { AppData } from '../types'
 
 export class AppRunningError extends Error {
-  constructor() { super('FloatAnchor 桌面 App 正在运行，改动可能被覆盖') }
+  constructor() { super('FloatAnchor 桌面 App 正在运行，改动可能被覆盖'); this.name = 'AppRunningError' }
 }
 
 export function resolveDataFile(explicit?: string): string {
@@ -20,7 +20,11 @@ export function resolveDataFile(explicit?: string): string {
 
 export function loadAppData(file: string): AppData {
   if (!existsSync(file)) return { canvases: [], activeCanvasId: null }
-  return JSON.parse(readFileSync(file, 'utf-8')) as AppData
+  try {
+    return JSON.parse(readFileSync(file, 'utf-8')) as AppData
+  } catch {
+    throw new Error(`数据文件解析失败：${file}`)
+  }
 }
 
 export interface SaveOptions { force?: boolean; isAppRunning?: () => boolean }
@@ -33,6 +37,7 @@ function timestamp(): string {
 export function saveAppData(file: string, data: AppData, opts: SaveOptions = {}): void {
   const running = (opts.isAppRunning ?? defaultIsAppRunning)()
   if (running && !opts.force) throw new AppRunningError()
+  if (!existsSync(dirname(file))) throw new Error('未找到 App 数据目录，请先运行一次桌面 App')
   if (existsSync(file)) {
     const backup = join(dirname(file), `float-anchor.backup-${timestamp()}.json`)
     copyFileSync(file, backup)
@@ -48,7 +53,8 @@ export function defaultIsAppRunning(): boolean {
       const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq FloatAnchor.exe'], { encoding: 'utf-8' })
       return /FloatAnchor\.exe/i.test(out)
     }
-    const out = execFileSync('pgrep', ['-f', 'FloatAnchor'], { encoding: 'utf-8' })
+    const args = platform() === 'darwin' ? ['-x', 'FloatAnchor'] : ['-f', 'FloatAnchor']
+    const out = execFileSync('pgrep', args, { encoding: 'utf-8' })
     return out.trim().length > 0
   } catch { return false }
 }
