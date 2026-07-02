@@ -4,6 +4,11 @@ import { v4 as uuid } from 'uuid'
 import type { Canvas, Card, CanvasLabel, Section, Connection, CanvasViewport, AppSettings, WebDAVConfig, WebDAVSyncDecision, TextBox, SyncProvider } from './types'
 import { historyStore, snapshotCanvas, applySnapshot, flushBurst } from './history'
 import { buildClipboard, instantiatePaste, clipboardTopLeft, type ClipboardPayload, type SelectionIds } from './clipboard'
+import {
+  CARD_DEFAULT_WIDTH, CARD_DEFAULT_TITLE, TEXT_DEFAULT_WIDTH,
+  LABEL_DEFAULT_WIDTH, LABEL_DEFAULT_LEVEL, LABEL_DEFAULT_TEXT,
+  SECTION_DEFAULT_WIDTH, SECTION_DEFAULT_HEIGHT, SECTION_DEFAULT_NAME, SECTION_COLORS,
+} from './model-defaults'
 
 export function getEffectiveProvider(settings: AppSettings): SyncProvider {
   return settings.syncProvider ?? (settings.webdav?.server ? 'webdav' : 'none')
@@ -117,7 +122,6 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 let lastRemoteUploadAt = 0
 
-const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
 const LOCAL_WEBDAV_SYNC_DELAY_MS = 2000
 const MIN_REMOTE_UPLOAD_INTERVAL_MS = 30000
 
@@ -323,11 +327,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (!activeCanvasId) return
     const card: Card = {
       id: uuid(),
-      title: '新卡片',
+      title: CARD_DEFAULT_TITLE,
       content: '',
       x,
       y,
-      width: 373,
+      width: CARD_DEFAULT_WIDTH,
     }
     set((s) => ({
       canvases: s.canvases.map((c) =>
@@ -629,7 +633,7 @@ export const useStore = create<AppState>((set, get) => ({
   addText: (x, y) => {
     const { activeCanvasId } = get()
     if (!activeCanvasId) return
-    const text: TextBox = { id: uuid(), text: '', x, y, width: 300 }
+    const text: TextBox = { id: uuid(), text: '', x, y, width: TEXT_DEFAULT_WIDTH }
     set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId
@@ -686,7 +690,7 @@ export const useStore = create<AppState>((set, get) => ({
   addLabel: (x, y) => {
     const { activeCanvasId } = get()
     if (!activeCanvasId) return
-    const label: CanvasLabel = { id: uuid(), text: '标题', level: 1, x, y, width: 300 }
+    const label: CanvasLabel = { id: uuid(), text: LABEL_DEFAULT_TEXT, level: LABEL_DEFAULT_LEVEL, x, y, width: LABEL_DEFAULT_WIDTH }
     set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId
@@ -742,7 +746,7 @@ export const useStore = create<AppState>((set, get) => ({
     const canvas = get().canvases.find((c) => c.id === activeCanvasId)
     const existingCount = canvas?.sections?.length ?? 0
     const color = SECTION_COLORS[existingCount % SECTION_COLORS.length]
-    const section: Section = { id: uuid(), name: '分区', x, y, width: 600, height: 400, color, cardIds: [] }
+    const section: Section = { id: uuid(), name: SECTION_DEFAULT_NAME, x, y, width: SECTION_DEFAULT_WIDTH, height: SECTION_DEFAULT_HEIGHT, color, cardIds: [] }
     set((s) => ({
       canvases: s.canvases.map((c) =>
         c.id === activeCanvasId

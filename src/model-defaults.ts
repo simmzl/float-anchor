@@ -1,0 +1,10 @@
+export const CARD_DEFAULT_WIDTH = 373
+export const CARD_DEFAULT_TITLE = '新卡片'
+export const TEXT_DEFAULT_WIDTH = 300
+export const LABEL_DEFAULT_WIDTH = 300
+export const LABEL_DEFAULT_LEVEL: 0 | 1 | 2 | 3 | 4 = 1
+export const LABEL_DEFAULT_TEXT = '标题'
+export const SECTION_DEFAULT_WIDTH = 600
+export const SECTION_DEFAULT_HEIGHT = 400
+export const SECTION_DEFAULT_NAME = '分区'
+export const SECTION_COLORS = ['#9ca3af', '#60a5fa', '#34d399', '#fb923c', '#f472b6']
