@@ -48,4 +48,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveImage: (bytes: ArrayBuffer, mime?: string) => ipcRenderer.invoke('save-image', bytes, mime),
   migrateEmbeddedImages: () => ipcRenderer.invoke('migrate-embedded-images'),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  cliStatus: () => ipcRenderer.invoke('cli-status'),
+  cliInstall: () => ipcRenderer.invoke('cli-install'),
+  cliUninstall: () => ipcRenderer.invoke('cli-uninstall'),
 })

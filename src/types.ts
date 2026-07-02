@@ -190,6 +190,9 @@ declare global {
       saveImage: (bytes: ArrayBuffer, mime?: string) => Promise<{ name?: string; error?: string }>
       migrateEmbeddedImages: () => Promise<{ success: boolean; count?: number; beforeBytes?: number; afterBytes?: number; error?: string }>
       openExternal: (url: string) => Promise<void>
+      cliStatus: () => Promise<{ installed: boolean; path?: string }>
+      cliInstall: () => Promise<{ success: boolean; path?: string; error?: string }>
+      cliUninstall: () => Promise<{ success: boolean; error?: string }>
     }
   }
 }

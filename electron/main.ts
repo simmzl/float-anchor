@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } from 'elect
 import path from 'node:path'
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { exec } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import archiver from 'archiver'
 import AdmZip from 'adm-zip'
 import { extractStoredImageName } from './sync/image-names'
@@ -12,7 +13,10 @@ import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import { createGitHubAdapter } from './sync/github-adapter'
 import { initGitHubAuth, saveGitHubToken, readGitHubToken, clearGitHubToken, hasGitHubToken } from './sync/github-auth'
+import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd } from './cli-installer'
 import type { RemoteAdapter, LocalStore } from './sync/types'
+
+const pExecFile = promisify(execFile)
 
 let dataDir = ''
 let dataFile = ''
@@ -984,4 +988,39 @@ ipcMain.handle('github-account', async () => {
 
 ipcMain.handle('open-external', (_e, url: string) => {
   if (typeof url === 'string' && /^https?:\/\//.test(url)) { void shell.openExternal(url).catch(() => {}) }
+})
+
+/* ===== CLI Install ===== */
+
+async function runLoginShell(cmd: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  const { file, args } = buildLoginShellCommand(cmd)
+  try {
+    const { stdout, stderr } = await pExecFile(file, args, { timeout: 120000 })
+    return { code: 0, stdout, stderr }
+  } catch (e: any) {
+    return { code: e.code ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? String(e.message ?? e) }
+  }
+}
+function cliDir(): string {
+  return resolveCliDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.isPackaged ? '' : app.getAppPath() })
+}
+
+ipcMain.handle('cli-status', async () => {
+  const r = await runLoginShell(process.platform === 'win32' ? 'where fa' : 'command -v fa')
+  const path = parseWhich(r.stdout)
+  return { installed: !!path, path: path ?? undefined }
+})
+
+ipcMain.handle('cli-install', async () => {
+  const npm = await runLoginShell(process.platform === 'win32' ? 'where npm' : 'command -v npm')
+  if (!parseWhich(npm.stdout)) return { success: false, error: 'no-node' }
+  const install = await runLoginShell(installArgs(cliDir()))
+  if (install.code !== 0) return { success: false, error: install.stderr || '安装失败' }
+  const where = await runLoginShell(process.platform === 'win32' ? 'where fa' : 'command -v fa')
+  return { success: true, path: parseWhich(where.stdout) ?? undefined }
+})
+
+ipcMain.handle('cli-uninstall', async () => {
+  const r = await runLoginShell(uninstallCmd())
+  return r.code === 0 ? { success: true } : { success: false, error: r.stderr || '卸载失败' }
 })
