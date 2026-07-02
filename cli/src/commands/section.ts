@@ -5,9 +5,9 @@ import { RefError } from '../core/refs'
 
 export function registerSection(program: Command) {
   const g = () => program.opts() as GlobalOpts
-  const section = program.command('section')
+  const section = program.command('section').description('分区：增删改查')
 
-  section.command('ls').requiredOption('--canvas <ref>').action((o: { canvas: string }) => {
+  section.command('ls').description('列出分区').requiredOption('--canvas <ref>', '目标画布(id/名字)').action((o: { canvas: string }) => {
     const ctx = withData(g())
     try {
       const rows = listSections(ctx.data, o.canvas).map((s) => `${s.id.slice(0, 8)}  ${s.name}  ${s.color}`)
@@ -15,7 +15,7 @@ export function registerSection(program: Command) {
     } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
   })
 
-  section.command('add').option('--canvas <ref>').option('--name <n>').option('--color <c>').option('--x <n>').option('--y <n>').option('--width <n>').option('--height <n>')
+  section.command('add').description('新建分区').option('--canvas <ref>', '目标画布(id/名字)').option('--name <n>', '分区名').option('--color <c>', '颜色(如 #60a5fa)；省略按序轮转').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -24,7 +24,7 @@ export function registerSection(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  section.command('set <ref>').option('--canvas <ref>').option('--name <n>').option('--color <c>').option('--x <n>').option('--y <n>').option('--width <n>').option('--height <n>')
+  section.command('set <ref>').description('修改分区').option('--canvas <ref>', '目标画布(id/名字)').option('--name <n>', '分区名').option('--color <c>', '颜色(如 #60a5fa)；省略按序轮转').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -35,7 +35,7 @@ export function registerSection(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  section.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
+  section.command('rm <ref>').description('删除分区').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
     confirmDelete(ctx)
     try {

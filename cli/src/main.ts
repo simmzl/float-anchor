@@ -22,6 +22,13 @@ export function buildProgram(): Command {
   registerLabel(program)
   registerSection(program)
   registerConnect(program)
+  program.addHelpText('after', `
+示例:
+  fa --json canvas ls                                # 列画布(JSON)取 id
+  fa canvas create "我的画布"                         # 新建画布
+  fa --force card add --canvas 我的画布 --title 标题 --content -   # 从 stdin 读正文加卡片
+  fa card ls --canvas 我的画布                        # 列卡片
+说明: App 运行时写需加 --force; 跑批期间勿在 App 内操作; 跑完重启 App 才见结果。`)
   return program
 }
 

@@ -5,9 +5,9 @@ import { RefError } from '../core/refs'
 
 export function registerLabel(program: Command) {
   const g = () => program.opts() as GlobalOpts
-  const label = program.command('label')
+  const label = program.command('label').description('标签(标题)：增删改查')
 
-  label.command('ls').requiredOption('--canvas <ref>').action((o: { canvas: string }) => {
+  label.command('ls').description('列出标签').requiredOption('--canvas <ref>', '目标画布(id/名字)').action((o: { canvas: string }) => {
     const ctx = withData(g())
     try {
       const rows = listLabels(ctx.data, o.canvas).map((l) => `${l.id.slice(0, 8)}  H${l.level}  ${l.text}`)
@@ -15,7 +15,7 @@ export function registerLabel(program: Command) {
     } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
   })
 
-  label.command('add').option('--canvas <ref>').option('--text <t>').option('--level <n>').option('--x <n>').option('--y <n>').option('--width <n>')
+  label.command('add').description('新建标签').option('--canvas <ref>', '目标画布(id/名字)').option('--text <t>', '标题文本；传 - 从 stdin 读').option('--level <n>', '级别 0..4').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)')
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -24,7 +24,7 @@ export function registerLabel(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  label.command('set <ref>').option('--canvas <ref>').option('--text <t>').option('--level <n>').option('--x <n>').option('--y <n>').option('--width <n>')
+  label.command('set <ref>').description('修改标签').option('--canvas <ref>', '目标画布(id/名字)').option('--text <t>', '标题文本；传 - 从 stdin 读').option('--level <n>', '级别 0..4').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)')
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -35,7 +35,7 @@ export function registerLabel(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  label.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
+  label.command('rm <ref>').description('删除标签').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
     confirmDelete(ctx)
     try {

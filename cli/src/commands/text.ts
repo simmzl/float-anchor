@@ -5,9 +5,9 @@ import { RefError } from '../core/refs'
 
 export function registerText(program: Command) {
   const g = () => program.opts() as GlobalOpts
-  const text = program.command('text')
+  const text = program.command('text').description('文本框：增删改查')
 
-  text.command('ls').requiredOption('--canvas <ref>').action((o: { canvas: string }) => {
+  text.command('ls').description('列出文本框').requiredOption('--canvas <ref>', '目标画布(id/名字)').action((o: { canvas: string }) => {
     const ctx = withData(g())
     try {
       const rows = listTexts(ctx.data, o.canvas).map((t) => `${t.id.slice(0, 8)}  ${t.text.slice(0, 30)}`)
@@ -15,7 +15,7 @@ export function registerText(program: Command) {
     } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
   })
 
-  text.command('add').option('--canvas <ref>').option('--text <t>').option('--x <n>').option('--y <n>').option('--width <n>')
+  text.command('add').description('新建文本框').option('--canvas <ref>', '目标画布(id/名字)').option('--text <t>', '文本内容；传 - 从 stdin 读').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)')
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -24,7 +24,7 @@ export function registerText(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  text.command('set <ref>').option('--canvas <ref>').option('--text <t>').option('--x <n>').option('--y <n>').option('--width <n>')
+  text.command('set <ref>').description('修改文本框').option('--canvas <ref>', '目标画布(id/名字)').option('--text <t>', '文本内容；传 - 从 stdin 读').option('--x <n>', 'X 坐标(像素)').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)')
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -35,7 +35,7 @@ export function registerText(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  text.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
+  text.command('rm <ref>').description('删除文本框').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
     confirmDelete(ctx)
     try {

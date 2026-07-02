@@ -4,9 +4,9 @@ import { listConnections, addConnection, removeConnection } from '../core/connec
 
 export function registerConnect(program: Command) {
   const g = () => program.opts() as GlobalOpts
-  const connect = program.command('connect')
+  const connect = program.command('connect').description('连线：卡片间箭头')
 
-  connect.command('ls').requiredOption('--canvas <ref>').action((o: { canvas: string }) => {
+  connect.command('ls').description('列出连线').requiredOption('--canvas <ref>', '所在画布(id/名字)').action((o: { canvas: string }) => {
     const ctx = withData(g())
     try {
       const rows = listConnections(ctx.data, o.canvas).map((cn) => `${cn.id.slice(0, 8)}  ${cn.fromCardId.slice(0, 8)} -> ${cn.toCardId.slice(0, 8)}`)
@@ -14,7 +14,7 @@ export function registerConnect(program: Command) {
     } catch (e) { fail(2, (e as Error).message, g().json) }
   })
 
-  connect.command('add').option('--canvas <ref>').requiredOption('--from <cardRef>').requiredOption('--to <cardRef>')
+  connect.command('add').description('连接两张卡片').option('--canvas <ref>', '所在画布(id/名字)').requiredOption('--from <cardRef>', '起点卡片 id').requiredOption('--to <cardRef>', '终点卡片 id')
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
@@ -23,7 +23,7 @@ export function registerConnect(program: Command) {
       } catch (e) { fail(2, (e as Error).message, g().json) }
     })
 
-  connect.command('rm <connId>').option('--canvas <ref>').action((connId: string, o: any) => {
+  connect.command('rm <connId>').description('删除连线').option('--canvas <ref>', '所在画布(id/名字)').action((connId: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
     confirmDelete(ctx)
     try {

@@ -5,9 +5,9 @@ import { RefError } from '../core/refs'
 
 export function registerCard(program: Command) {
   const g = () => program.opts() as GlobalOpts
-  const card = program.command('card')
+  const card = program.command('card').description('卡片：增删改查')
 
-  card.command('ls').requiredOption('--canvas <ref>').action((o: { canvas: string }) => {
+  card.command('ls').description('列出画布内卡片').requiredOption('--canvas <ref>', '目标画布(id/名字/id前缀)').action((o: { canvas: string }) => {
     const ctx = withData(g())
     try {
       const rows = listCards(ctx.data, o.canvas).map((c) => `${c.id.slice(0, 8)}  ${c.title}`)
@@ -15,9 +15,9 @@ export function registerCard(program: Command) {
     } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
   })
 
-  card.command('add')
-    .option('--canvas <ref>').option('--title <t>').option('--content <m>')
-    .option('--x <n>').option('--y <n>').option('--width <n>').option('--height <n>')
+  card.command('add').description('新建卡片')
+    .option('--canvas <ref>', '目标画布(id/名字)').option('--title <t>', '卡片标题').option('--content <m>', '正文(markdown)；传 - 从 stdin 读')
+    .option('--x <n>', 'X 坐标(像素)；与 --y 同时省略则自动布局').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
     .action((o: any) => {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
@@ -31,9 +31,9 @@ export function registerCard(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  card.command('set <ref>')
-    .option('--canvas <ref>').option('--title <t>').option('--content <m>')
-    .option('--x <n>').option('--y <n>').option('--width <n>').option('--height <n>')
+  card.command('set <ref>').description('修改卡片字段')
+    .option('--canvas <ref>', '目标画布(id/名字)').option('--title <t>', '卡片标题').option('--content <m>', '正文(markdown)；传 - 从 stdin 读')
+    .option('--x <n>', 'X 坐标(像素)；与 --y 同时省略则自动布局').option('--y <n>', 'Y 坐标(像素)').option('--width <n>', '宽度(像素)').option('--height <n>', '高度(像素)')
     .action((ref: string, o: any) => {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
@@ -45,8 +45,8 @@ export function registerCard(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  card.command('mv <ref>')
-    .requiredOption('--x <n>').requiredOption('--y <n>').option('--canvas <ref>')
+  card.command('mv <ref>').description('移动卡片到 --x/--y')
+    .requiredOption('--x <n>', 'X 坐标(像素)').requiredOption('--y <n>', 'Y 坐标(像素)').option('--canvas <ref>', '目标画布(id/名字)')
     .action((ref: string, o: any) => {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
@@ -56,7 +56,7 @@ export function registerCard(program: Command) {
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
 
-  card.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
+  card.command('rm <ref>').description('删除卡片(连带清理其连线)').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g())
     const canvasRef = resolveCanvasRef(ctx, o.canvas)
     confirmDelete(ctx)
