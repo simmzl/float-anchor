@@ -29,7 +29,8 @@
     ],
     "extraResources": [
       { "from": "cli/dist", "to": "cli/dist" },
-      { "from": "cli/package.json", "to": "cli/package.json" }
+      { "from": "cli/package.json", "to": "cli/package.json" },
+      { "from": "cli/skill", "to": "cli/skill" }
     ],
     "mac": {
       "target": [

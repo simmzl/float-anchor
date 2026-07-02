@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, protocol, net, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { exec, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -13,7 +14,7 @@ import { reconcileState, resolveConflict } from './sync/engine'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import { createGitHubAdapter } from './sync/github-adapter'
 import { initGitHubAuth, saveGitHubToken, readGitHubToken, clearGitHubToken, hasGitHubToken } from './sync/github-auth'
-import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd } from './cli-installer'
+import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd, bundledSkillFile, skillInstallDirs } from './cli-installer'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
 const pExecFile = promisify(execFile)
@@ -1005,6 +1006,25 @@ function cliDir(): string {
   return resolveCliDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.isPackaged ? '' : app.getAppPath() })
 }
 
+function installSkillFiles(): void {
+  try {
+    const src = bundledSkillFile(cliDir())
+    if (!fs.existsSync(src)) { console.error('skill 源缺失:', src); return }
+    for (const dir of skillInstallDirs(os.homedir(), process.env)) {
+      fs.mkdirSync(dir, { recursive: true })
+      fs.copyFileSync(src, path.join(dir, 'SKILL.md'))
+    }
+  } catch (err) { console.error('installSkillFiles failed:', err) }
+}
+
+function uninstallSkillFiles(): void {
+  try {
+    for (const dir of skillInstallDirs(os.homedir(), process.env)) {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  } catch (err) { console.error('uninstallSkillFiles failed:', err) }
+}
+
 ipcMain.handle('cli-status', async () => {
   const r = await runLoginShell(process.platform === 'win32' ? 'where fa' : 'command -v fa')
   const path = parseWhich(r.stdout)
@@ -1016,11 +1036,13 @@ ipcMain.handle('cli-install', async () => {
   if (!parseWhich(npm.stdout)) return { success: false, error: 'no-node' }
   const install = await runLoginShell(installArgs(cliDir()))
   if (install.code !== 0) return { success: false, error: install.stderr || '安装失败' }
+  installSkillFiles()
   const where = await runLoginShell(process.platform === 'win32' ? 'where fa' : 'command -v fa')
   return { success: true, path: parseWhich(where.stdout) ?? undefined }
 })
 
 ipcMain.handle('cli-uninstall', async () => {
   const r = await runLoginShell(uninstallCmd())
+  uninstallSkillFiles()
   return r.code === 0 ? { success: true } : { success: false, error: r.stderr || '卸载失败' }
 })
