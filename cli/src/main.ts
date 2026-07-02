@@ -2,6 +2,10 @@
 import { Command } from 'commander'
 import { registerCanvas } from './commands/canvas'
 import { registerCard } from './commands/card'
+import { registerText } from './commands/text'
+import { registerLabel } from './commands/label'
+import { registerSection } from './commands/section'
+import { registerConnect } from './commands/connect'
 
 export function buildProgram(): Command {
   const program = new Command()
@@ -12,6 +16,10 @@ export function buildProgram(): Command {
     .option('--yes', '跳过删除确认')
   registerCanvas(program)
   registerCard(program)
+  registerText(program)
+  registerLabel(program)
+  registerSection(program)
+  registerConnect(program)
   return program
 }
 
