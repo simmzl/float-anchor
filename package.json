@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:win": "npm run build && electron-builder --win",
-    "build:all": "npm run build && electron-builder --mac --win",
+    "build:cli": "cd cli && npm install && npm run build",
+    "build:mac": "npm run build && npm run build:cli && electron-builder --mac",
+    "build:win": "npm run build && npm run build:cli && electron-builder --win",
+    "build:all": "npm run build && npm run build:cli && electron-builder --mac --win",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -25,6 +26,10 @@
       "dist/**/*",
       "dist-electron/**/*",
       "build/icon.png"
+    ],
+    "extraResources": [
+      { "from": "cli/dist", "to": "cli/dist" },
+      { "from": "cli/package.json", "to": "cli/package.json" }
     ],
     "mac": {
       "target": [
