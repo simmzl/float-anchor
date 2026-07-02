@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, resolveCanvasRef, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
 import { listConnections, addConnection, removeConnection } from '../core/connection'
 
 export function registerConnect(program: Command) {
@@ -25,6 +25,7 @@ export function registerConnect(program: Command) {
 
   connect.command('rm <connId>').option('--canvas <ref>').action((connId: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
+    confirmDelete(ctx)
     try {
       const { data, removed } = removeConnection(ctx.data, canvasRef, connId)
       commit(ctx, data); output(g().json, `✓ 已删除连线 ${removed.id.slice(0, 8)}`, removed)

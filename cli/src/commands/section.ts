@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, resolveCanvasRef, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
 import { listSections, addSection, setSection, removeSection } from '../core/section'
 import { RefError } from '../core/refs'
 
@@ -39,6 +39,7 @@ export function registerSection(program: Command) {
 
   section.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
+    confirmDelete(ctx)
     try {
       const { data, removed } = removeSection(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除分区 ${removed.id.slice(0, 8)}`, removed)

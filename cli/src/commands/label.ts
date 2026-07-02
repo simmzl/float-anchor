@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, readContent, resolveCanvasRef, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
 import { listLabels, addLabel, setLabel, removeLabel } from '../core/label'
 import { RefError } from '../core/refs'
 
@@ -40,6 +40,7 @@ export function registerLabel(program: Command) {
 
   label.command('rm <ref>').option('--canvas <ref>').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
+    confirmDelete(ctx)
     try {
       const { data, removed } = removeLabel(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除标签 ${removed.id.slice(0, 8)}`, removed)
