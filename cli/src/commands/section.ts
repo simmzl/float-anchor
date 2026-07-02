@@ -37,7 +37,7 @@ export function registerSection(program: Command) {
 
   section.command('rm <ref>').description('删除分区').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
-    confirmDelete(ctx)
+    confirmDelete(ctx, '分区')
     try {
       const { data, removed } = removeSection(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除分区 ${removed.id.slice(0, 8)}`, removed)

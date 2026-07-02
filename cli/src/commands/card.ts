@@ -59,7 +59,7 @@ export function registerCard(program: Command) {
   card.command('rm <ref>').description('删除卡片(连带清理其连线)').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g())
     const canvasRef = resolveCanvasRef(ctx, o.canvas)
-    confirmDelete(ctx)
+    confirmDelete(ctx, '卡片')
     try {
       const { data, removed } = removeCard(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除卡片 ${removed.id.slice(0, 8)}`, removed)

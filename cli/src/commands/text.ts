@@ -37,7 +37,7 @@ export function registerText(program: Command) {
 
   text.command('rm <ref>').description('删除文本框').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
-    confirmDelete(ctx)
+    confirmDelete(ctx, '文本框')
     try {
       const { data, removed } = removeText(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除文本框 ${removed.id.slice(0, 8)}`, removed)

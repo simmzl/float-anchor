@@ -25,7 +25,7 @@ export function registerConnect(program: Command) {
 
   connect.command('rm <connId>').description('删除连线').option('--canvas <ref>', '所在画布(id/名字)').action((connId: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
-    confirmDelete(ctx)
+    confirmDelete(ctx, '连线')
     try {
       const { data, removed } = removeConnection(ctx.data, canvasRef, connId)
       commit(ctx, data); output(g().json, `✓ 已删除连线 ${removed.id.slice(0, 8)}`, removed)

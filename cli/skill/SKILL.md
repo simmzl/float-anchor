@@ -51,10 +51,17 @@ description: Use when the user wants to programmatically create or batch-generat
 ## 退出码（据此判定失败）
 
 - `0` 成功
-- `1` 用法 / 坏输入（如 `--x abc`、`--level 9` —— 需要数字）
+- `1` 用法 / 坏输入（数字选项非法，如 `--x abc`、`--level 9`）/ 删除未确认
 - `2` 引用未找到或歧义
 - `3` App 运行中、写被拒 → 加 `--force` 重试
 - `4` 数据读写错误
+
+## 删除需确认（rm）
+
+任何 `rm`（canvas/card/text/label/section/connect）都要二次确认：
+
+- **非交互环境（agent/脚本/管道）必须显式加 `--yes`**，否则以退出码 1 拒绝。agent 批量删除前应先确认用户意图，再加 `--yes`。
+- 人在终端直接跑会弹 `[y/N]` 交互确认。
 
 ## 指定数据文件
 

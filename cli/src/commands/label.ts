@@ -37,7 +37,7 @@ export function registerLabel(program: Command) {
 
   label.command('rm <ref>').description('删除标签').option('--canvas <ref>', '目标画布(id/名字)').action((ref: string, o: any) => {
     const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
-    confirmDelete(ctx)
+    confirmDelete(ctx, '标签')
     try {
       const { data, removed } = removeLabel(ctx.data, canvasRef, ref)
       commit(ctx, data); output(g().json, `✓ 已删除标签 ${removed.id.slice(0, 8)}`, removed)

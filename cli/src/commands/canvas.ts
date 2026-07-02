@@ -30,7 +30,7 @@ export function registerCanvas(program: Command) {
 
   canvas.command('rm <ref>').description('删除画布').action((ref: string) => {
     const ctx = withData(g())
-    confirmDelete(ctx)
+    confirmDelete(ctx, '画布')
     try {
       const { data, removed } = removeCanvas(ctx.data, ref)
       commit(ctx, data); output(g().json, `✓ 已删除画布「${removed.name}」`, removed)
