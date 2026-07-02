@@ -1,10 +1,7 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, num, level, GlobalOpts } from './helpers'
 import { listLabels, addLabel, setLabel, removeLabel } from '../core/label'
 import { RefError } from '../core/refs'
-
-const num = (v?: string) => v == null ? undefined : Number(v)
-const lvl = (v?: string) => v == null ? undefined : (Number(v) as 0 | 1 | 2 | 3 | 4)
 
 export function registerLabel(program: Command) {
   const g = () => program.opts() as GlobalOpts
@@ -22,7 +19,7 @@ export function registerLabel(program: Command) {
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const { data, label: created } = addLabel(ctx.data, canvasRef, { text: readContent(o.text), level: lvl(o.level), x: num(o.x), y: num(o.y), width: num(o.width) })
+        const { data, label: created } = addLabel(ctx.data, canvasRef, { text: readContent(o.text), level: level(o.level, g().json), x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json) })
         commit(ctx, data); output(g().json, `✓ 已新建标签 ${created.id.slice(0, 8)}`, created)
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
@@ -31,7 +28,7 @@ export function registerLabel(program: Command) {
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const patch: any = { text: readContent(o.text), level: lvl(o.level), x: num(o.x), y: num(o.y), width: num(o.width) }
+        const patch: any = { text: readContent(o.text), level: level(o.level, g().json), x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json) }
         Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
         const { data, label: l } = setLabel(ctx.data, canvasRef, ref, patch)
         commit(ctx, data); output(g().json, `✓ 已更新标签 ${l.id.slice(0, 8)}`, l)

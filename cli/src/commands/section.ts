@@ -1,9 +1,7 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, resolveCanvasRef, confirmDelete, num, GlobalOpts } from './helpers'
 import { listSections, addSection, setSection, removeSection } from '../core/section'
 import { RefError } from '../core/refs'
-
-const num = (v?: string) => v == null ? undefined : Number(v)
 
 export function registerSection(program: Command) {
   const g = () => program.opts() as GlobalOpts
@@ -21,7 +19,7 @@ export function registerSection(program: Command) {
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const { data, section: created } = addSection(ctx.data, canvasRef, { name: o.name, color: o.color, x: num(o.x), y: num(o.y), width: num(o.width), height: num(o.height) })
+        const { data, section: created } = addSection(ctx.data, canvasRef, { name: o.name, color: o.color, x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json), height: num(o.height, '--height', g().json) })
         commit(ctx, data); output(g().json, `✓ 已新建分区 ${created.id.slice(0, 8)}`, created)
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
@@ -30,7 +28,7 @@ export function registerSection(program: Command) {
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const patch: any = { name: o.name, color: o.color, x: num(o.x), y: num(o.y), width: num(o.width), height: num(o.height) }
+        const patch: any = { name: o.name, color: o.color, x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json), height: num(o.height, '--height', g().json) }
         Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
         const { data, section: s } = setSection(ctx.data, canvasRef, ref, patch)
         commit(ctx, data); output(g().json, `✓ 已更新分区 ${s.id.slice(0, 8)}`, s)

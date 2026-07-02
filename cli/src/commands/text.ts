@@ -1,9 +1,7 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, num, GlobalOpts } from './helpers'
 import { listTexts, addText, setText, removeText } from '../core/text'
 import { RefError } from '../core/refs'
-
-const num = (v?: string) => v == null ? undefined : Number(v)
 
 export function registerText(program: Command) {
   const g = () => program.opts() as GlobalOpts
@@ -21,7 +19,7 @@ export function registerText(program: Command) {
     .action((o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const { data, text: created } = addText(ctx.data, canvasRef, { text: readContent(o.text), x: num(o.x), y: num(o.y), width: num(o.width) })
+        const { data, text: created } = addText(ctx.data, canvasRef, { text: readContent(o.text), x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json) })
         commit(ctx, data); output(g().json, `✓ 已新建文本框 ${created.id.slice(0, 8)}`, created)
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })
@@ -30,7 +28,7 @@ export function registerText(program: Command) {
     .action((ref: string, o: any) => {
       const ctx = withData(g()); const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const patch: any = { text: readContent(o.text), x: num(o.x), y: num(o.y), width: num(o.width) }
+        const patch: any = { text: readContent(o.text), x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json) }
         Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
         const { data, text: t } = setText(ctx.data, canvasRef, ref, patch)
         commit(ctx, data); output(g().json, `✓ 已更新文本框 ${t.id.slice(0, 8)}`, t)

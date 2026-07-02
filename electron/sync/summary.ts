@@ -1,3 +1,6 @@
+// ⚠️ 此文件被 CLI 打包引用（cli/src/commands/helpers.ts import normalizeSyncData）。
+// 必须保持 electron-free：禁止 import 'electron' 或任何非纯依赖，否则 build:cli / build:mac 会静默失败。
+
 export interface AppData {
   canvases: any[]
   activeCanvasId: string | null

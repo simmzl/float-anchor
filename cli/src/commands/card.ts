@@ -1,9 +1,7 @@
 import type { Command } from 'commander'
-import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, GlobalOpts } from './helpers'
+import { withData, commit, output, fail, readContent, resolveCanvasRef, confirmDelete, num, GlobalOpts } from './helpers'
 import { listCards, addCard, setCard, moveCard, removeCard } from '../core/card'
 import { RefError } from '../core/refs'
-
-const num = (v?: string) => v == null ? undefined : Number(v)
 
 export function registerCard(program: Command) {
   const g = () => program.opts() as GlobalOpts
@@ -26,7 +24,8 @@ export function registerCard(program: Command) {
       try {
         const { data, card: created } = addCard(ctx.data, canvasRef, {
           title: o.title, content: readContent(o.content),
-          x: num(o.x), y: num(o.y), width: num(o.width), height: num(o.height),
+          x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json),
+          width: num(o.width, '--width', g().json), height: num(o.height, '--height', g().json),
         })
         commit(ctx, data); output(g().json, `✓ 已新建卡片 ${created.id.slice(0, 8)}`, created)
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
@@ -39,7 +38,7 @@ export function registerCard(program: Command) {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const patch: any = { title: o.title, content: readContent(o.content), x: num(o.x), y: num(o.y), width: num(o.width), height: num(o.height) }
+        const patch: any = { title: o.title, content: readContent(o.content), x: num(o.x, '--x', g().json), y: num(o.y, '--y', g().json), width: num(o.width, '--width', g().json), height: num(o.height, '--height', g().json) }
         Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
         const { data, card: c } = setCard(ctx.data, canvasRef, ref, patch)
         commit(ctx, data); output(g().json, `✓ 已更新卡片 ${c.id.slice(0, 8)}`, c)
@@ -52,7 +51,7 @@ export function registerCard(program: Command) {
       const ctx = withData(g())
       const canvasRef = resolveCanvasRef(ctx, o.canvas)
       try {
-        const { data, card: c } = moveCard(ctx.data, canvasRef, ref, Number(o.x), Number(o.y))
+        const { data, card: c } = moveCard(ctx.data, canvasRef, ref, num(o.x, '--x', g().json)!, num(o.y, '--y', g().json)!)
         commit(ctx, data); output(g().json, `✓ 已移动卡片 ${c.id.slice(0, 8)}`, c)
       } catch (e) { if (e instanceof RefError) fail(2, e.message, g().json); throw e }
     })

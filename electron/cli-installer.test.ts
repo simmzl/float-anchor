@@ -35,7 +35,20 @@ describe('cli-installer', () => {
     expect(parseWhich('\n\n/opt/homebrew/bin/fa\n\n')).toBe('/opt/homebrew/bin/fa')
   })
   it('builds install/uninstall commands', () => {
-    expect(installArgs('/a b/cli')).toBe('npm install -g "/a b/cli"')
+    expect(installArgs('/a b/cli')).toBe("npm install -g '/a b/cli'")
     expect(uninstallCmd()).toBe('npm uninstall -g float-anchor-cli')
+  })
+  it('single-quote-escapes a path containing shell metacharacters ($)', () => {
+    expect(installArgs('/Users/a$b/cli')).toBe("npm install -g '/Users/a$b/cli'")
+  })
+  it('single-quote-escapes a path containing an embedded single quote', () => {
+    expect(installArgs("/Users/a'b/cli")).toBe(`npm install -g '/Users/a'\\''b/cli'`)
+  })
+  it('keeps double-quoting on win32', () => {
+    const orig = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    const result = installArgs('C:\\a b\\cli')
+    Object.defineProperty(process, 'platform', { value: orig })
+    expect(result).toBe('npm install -g "C:\\a b\\cli"')
   })
 })

@@ -55,3 +55,19 @@ export function confirmDelete(ctx: Ctx): void {
   if (!process.stdin.isTTY) return
   fail(1, '请加 --yes 确认删除', ctx.opts.json)
 }
+
+// 数字入参校验：非法数字（如 "abc"、"12px"）不能静默变成 NaN → JSON.stringify(NaN) === 'null' 写脏数据文件。
+export function num(v: string | undefined, name: string, json?: boolean): number | undefined {
+  if (v == null) return undefined
+  const n = Number(v)
+  if (!Number.isFinite(n)) fail(1, `选项 ${name} 需要数字，收到「${v}」`, json)
+  return n
+}
+
+// --level 入参校验：只接受 0..4 的整数。
+export function level(v: string | undefined, json?: boolean): (0 | 1 | 2 | 3 | 4) | undefined {
+  if (v == null) return undefined
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < 0 || n > 4) fail(1, `--level 需要 0..4 的整数，收到「${v}」`, json)
+  return n as 0 | 1 | 2 | 3 | 4
+}
