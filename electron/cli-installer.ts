@@ -29,3 +29,15 @@ export function installArgs(cliDir: string): string {
     : `npm install -g ${shQuotePosix(cliDir)}`
 }
 export function uninstallCmd(): string { return 'npm uninstall -g float-anchor-cli' }
+
+export function bundledSkillFile(cliDir: string): string {
+  return join(cliDir, 'skill', 'SKILL.md')
+}
+
+export function skillInstallDirs(home: string, env: NodeJS.ProcessEnv): string[] {
+  const codexHome = env.CODEX_HOME || join(home, '.codex')
+  return [
+    join(home, '.claude', 'skills', 'floatanchor-cli'),
+    join(codexHome, 'skills', 'floatanchor-cli'),
+  ]
+}

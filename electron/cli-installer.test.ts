@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd } from './cli-installer'
+import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd, bundledSkillFile, skillInstallDirs } from './cli-installer'
 
 describe('cli-installer', () => {
   it('resolves prod cli dir under resourcesPath', () => {
@@ -50,5 +50,18 @@ describe('cli-installer', () => {
     const result = installArgs('C:\\a b\\cli')
     Object.defineProperty(process, 'platform', { value: orig })
     expect(result).toBe('npm install -g "C:\\a b\\cli"')
+  })
+  it('bundledSkillFile joins cliDir/skill/SKILL.md', () => {
+    expect(bundledSkillFile('/App/Contents/Resources/cli')).toBe('/App/Contents/Resources/cli/skill/SKILL.md')
+  })
+  it('skillInstallDirs targets claude + codex (default ~/.codex)', () => {
+    expect(skillInstallDirs('/Users/x', {})).toEqual([
+      '/Users/x/.claude/skills/floatanchor-cli',
+      '/Users/x/.codex/skills/floatanchor-cli',
+    ])
+  })
+  it('skillInstallDirs honors CODEX_HOME', () => {
+    expect(skillInstallDirs('/Users/x', { CODEX_HOME: '/custom/codex' })[1])
+      .toBe('/custom/codex/skills/floatanchor-cli')
   })
 })
