@@ -46,7 +46,7 @@ description: Use when the user wants to programmatically create or batch-generat
 
 1. **App 通常开着**：不加 `--force` 的写会以**退出码 3** 拒绝（`FloatAnchor 桌面 App 正在运行…`）。加 **`--force`** 强制写。
 2. **跑批前告诉用户：期间不要在 FloatAnchor 里操作** —— 否则 App 的下一次保存会覆盖 `fa` 的改动。
-3. **跑批后告诉用户重启 FloatAnchor** 才能看到结果（App 只在启动时读文件）。
+3. **跑批后告诉用户在 FloatAnchor 里按 `Cmd+R`（macOS）/ `Ctrl+R`（Windows）刷新**，即可看到结果（这会让 App 重新从磁盘读数据，无需重启）。
 
 ## 退出码（据此判定失败）
 
