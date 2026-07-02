@@ -7,6 +7,5 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node20',
-  banner: { js: '#!/usr/bin/env node' },
 })
 console.log('built dist/fa.js')
