@@ -9,9 +9,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:cli": "cd cli && npm install && npm run build",
-    "build:mac": "npm run build && npm run build:cli && electron-builder --mac",
-    "build:win": "npm run build && npm run build:cli && electron-builder --win",
-    "build:all": "npm run build && npm run build:cli && electron-builder --mac --win",
+    "build:mac": "npm run build && npm run build:cli && electron-builder --mac --publish never",
+    "build:win": "npm run build && npm run build:cli && electron-builder --win --publish never",
+    "build:all": "npm run build && npm run build:cli && electron-builder --mac --win --publish never",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
