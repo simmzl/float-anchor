@@ -15,6 +15,8 @@ import { prepareDataWrite } from './sync/data-write'
 import { createWebDAVAdapter } from './sync/webdav-adapter'
 import { createGitHubAdapter } from './sync/github-adapter'
 import { initGitHubAuth, saveGitHubToken, readGitHubToken, clearGitHubToken, hasGitHubToken } from './sync/github-auth'
+import { startDeviceFlow, pollDeviceToken } from './sync/github-device'
+import { GITHUB_OAUTH_CLIENT_ID } from './sync/github-client'
 import { resolveCliDir, buildLoginShellCommand, parseWhich, installArgs, uninstallCmd, bundledSkillFile, skillInstallDirs } from './cli-installer'
 import type { RemoteAdapter, LocalStore } from './sync/types'
 
@@ -977,6 +979,51 @@ ipcMain.handle('github-account', async () => {
     const u = await resp.json() as { login?: string }
     return { login: u.login || null }
   } catch { return { login: null } }
+})
+
+function mapDeviceError(err: any): string {
+  const m = String(err?.message ?? err ?? '')
+  if (m === 'expired_token') return '授权码已过期，请重新连接'
+  if (m === 'access_denied') return '已取消授权'
+  if (/network|fetch failed|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|ECONNRESET/i.test(m)) return '网络连接失败，请检查网络'
+  return '连接 GitHub 失败，请重试'
+}
+
+let deviceAbort: AbortController | null = null
+
+ipcMain.handle('github-device-start', async () => {
+  try {
+    const dc = await startDeviceFlow(GITHUB_OAUTH_CLIENT_ID)
+    void shell.openExternal(dc.verification_uri).catch(() => {})
+    deviceAbort?.abort()
+    deviceAbort = new AbortController()
+    const signal = deviceAbort.signal
+    void (async () => {
+      try {
+        const token = await pollDeviceToken(GITHUB_OAUTH_CLIENT_ID, dc.device_code, dc.interval, { signal })
+        saveGitHubToken(token)
+        let login: string | null = null
+        try {
+          const resp = await fetch('https://api.github.com/user', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+          })
+          if (resp.ok) { const u = await resp.json() as { login?: string }; login = u.login || null }
+        } catch { /* 校验失败不阻断，login 置空 */ }
+        mainWindow?.webContents.send('github-device-status', { status: 'success', login })
+      } catch (err: any) {
+        if (String(err?.message) === 'aborted') return
+        mainWindow?.webContents.send('github-device-status', { status: 'error', error: mapDeviceError(err) })
+      }
+    })()
+    return { success: true, userCode: dc.user_code, verificationUri: dc.verification_uri }
+  } catch (err: any) {
+    return { success: false, error: mapDeviceError(err) }
+  }
+})
+
+ipcMain.handle('github-device-cancel', async () => {
+  deviceAbort?.abort(); deviceAbort = null
+  return { success: true }
 })
 
 /* ===== Open External ===== */

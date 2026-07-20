@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
   githubHasToken: () => ipcRenderer.invoke('github-has-token'),
   githubAccount: () => ipcRenderer.invoke('github-account'),
+  githubDeviceStart: () => ipcRenderer.invoke('github-device-start'),
+  githubDeviceCancel: () => ipcRenderer.invoke('github-device-cancel'),
+  onGithubDeviceStatus: (cb: (s: any) => void) => {
+    const handler = (_e: any, s: any) => cb(s)
+    ipcRenderer.on('github-device-status', handler)
+    return () => { ipcRenderer.removeListener('github-device-status', handler) }
+  },
   saveImage: (bytes: ArrayBuffer, mime?: string) => ipcRenderer.invoke('save-image', bytes, mime),
   migrateEmbeddedImages: () => ipcRenderer.invoke('migrate-embedded-images'),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),

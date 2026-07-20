@@ -187,6 +187,9 @@ declare global {
       githubClearToken: () => Promise<{ success: boolean }>
       githubHasToken: () => Promise<{ has: boolean }>
       githubAccount: () => Promise<{ login: string | null }>
+      githubDeviceStart: () => Promise<{ success: boolean; userCode?: string; verificationUri?: string; error?: string }>
+      githubDeviceCancel: () => Promise<{ success: boolean }>
+      onGithubDeviceStatus: (cb: (s: { status: 'success'; login: string | null } | { status: 'error'; error: string }) => void) => () => void
       saveImage: (bytes: ArrayBuffer, mime?: string) => Promise<{ name?: string; error?: string }>
       migrateEmbeddedImages: () => Promise<{ success: boolean; count?: number; beforeBytes?: number; afterBytes?: number; error?: string }>
       openExternal: (url: string) => Promise<void>
