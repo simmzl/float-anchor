@@ -261,6 +261,10 @@ export default function SettingsModal() {
   const [ghConnected, setGhConnected] = useState(false)
   const [ghAccount, setGhAccount] = useState<string | null>(null)
   const [ghTest, setGhTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+  const [ghDeviceCode, setGhDeviceCode] = useState<string | null>(null)
+  const [ghConnecting, setGhConnecting] = useState(false)
+  const [ghDeviceError, setGhDeviceError] = useState<string | null>(null)
+  const [showPat, setShowPat] = useState(false)
 
   useEffect(() => {
     window.electronAPI.githubHasToken().then((r) => {
@@ -337,6 +341,36 @@ export default function SettingsModal() {
     useStore.getState().setSyncProvider('none')
     setGhConnected(false); setGhAccount(null)
   }, [])
+
+  const handleGithubConnect = useCallback(async () => {
+    if (!ghRepo.trim()) { setGhDeviceError('请先填写仓库 (owner/repo)'); return }
+    setGhConnecting(true); setGhDeviceError(null); setGhDeviceCode(null)
+    const res = await window.electronAPI.githubDeviceStart()
+    if (!res.success) { setGhConnecting(false); setGhDeviceError(res.error || '连接失败'); return }
+    setGhDeviceCode(res.userCode || null)
+  }, [ghRepo])
+
+  const handleGithubCancel = useCallback(async () => {
+    await window.electronAPI.githubDeviceCancel()
+    setGhConnecting(false); setGhDeviceCode(null)
+  }, [])
+
+  useEffect(() => {
+    const off = window.electronAPI.onGithubDeviceStatus((s) => {
+      if (s.status === 'success') {
+        setGhConnecting(false); setGhDeviceCode(null); setGhDeviceError(null)
+        setGhConnected(true); setGhAccount(s.login ?? null)
+        const st = { ...useStore.getState().settings, github: { repo: ghRepo.trim(), branch: ghBranch.trim() || 'main' } }
+        void useStore.getState().saveSettings(st)
+        useStore.getState().setSyncProvider('github')
+        useStore.getState().setSyncStatus('syncing')
+        window.electronAPI.syncAuto().then((r) => applySyncResult(r)).catch(() => useStore.getState().setSyncStatus('error', '同步失败'))
+      } else {
+        setGhConnecting(false); setGhDeviceCode(null); setGhDeviceError(s.error || '连接失败')
+      }
+    })
+    return off
+  }, [ghRepo, ghBranch, applySyncResult])
 
   useEffect(() => {
     if (settings.webdav) {
@@ -582,14 +616,37 @@ export default function SettingsModal() {
                     <input value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="yourname/float-anchor-data" /></div>
                   <div className="webdav-field"><label>分支</label>
                     <input value={ghBranch} onChange={(e) => setGhBranch(e.target.value)} placeholder="main" /></div>
-                  <div className="webdav-field"><label>访问令牌 (PAT)</label>
-                    <input type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="fine-grained PAT, Contents 读写" /></div>
-                  <div className="webdav-actions">
-                    <button className="primary" onClick={handleGithubSave} disabled={ghTest === 'testing'}>
-                      {ghTest === 'testing' ? '连接中...' : ghTest === 'fail' ? '连接失败' : '连接并保存'}
-                    </button>
-                  </div>
-                  <div className="data-hint">在 GitHub → Settings → Developer settings → Fine-grained tokens 生成，仅授予该仓库 Contents 读写。</div>
+
+                  {ghDeviceCode ? (
+                    <div className="github-device-code">
+                      <div className="data-hint">已打开浏览器，请在 GitHub 页面输入下方授权码并确认：</div>
+                      <div className="device-code-value">{ghDeviceCode}</div>
+                      <div className="webdav-actions"><button onClick={handleGithubCancel}>取消</button></div>
+                    </div>
+                  ) : (
+                    <div className="webdav-actions">
+                      <button className="primary" onClick={handleGithubConnect} disabled={ghConnecting}>
+                        {ghConnecting ? '连接中...' : '连接 GitHub'}
+                      </button>
+                    </div>
+                  )}
+                  {ghDeviceError && <div className="settings-warning">{ghDeviceError}</div>}
+
+                  <button className="link-button" onClick={() => setShowPat((v) => !v)}>
+                    {showPat ? '收起' : '使用访问令牌 (PAT) 连接'}
+                  </button>
+                  {showPat && (
+                    <>
+                      <div className="webdav-field"><label>访问令牌 (PAT)</label>
+                        <input type="password" value={ghToken} onChange={(e) => setGhToken(e.target.value)} placeholder="fine-grained PAT, Contents 读写" /></div>
+                      <div className="webdav-actions">
+                        <button className="primary" onClick={handleGithubSave} disabled={ghTest === 'testing'}>
+                          {ghTest === 'testing' ? '连接中...' : ghTest === 'fail' ? '连接失败' : '连接并保存'}
+                        </button>
+                      </div>
+                      <div className="data-hint">在 GitHub → Settings → Developer settings → Fine-grained tokens 生成，仅授予该仓库 Contents 读写。</div>
+                    </>
+                  )}
                 </>
               )}
             </div>
