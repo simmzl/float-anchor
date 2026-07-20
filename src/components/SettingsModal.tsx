@@ -632,6 +632,8 @@ export default function SettingsModal() {
                   )}
                   {ghDeviceError && <div className="settings-warning">{ghDeviceError}</div>}
 
+                  <div className="data-hint">「连接 GitHub」会授予全部仓库的读写权限（Device Flow 限制）；若只想授权单个仓库，请改用下方的访问令牌 (PAT)。</div>
+
                   <button className="link-button" onClick={() => setShowPat((v) => !v)}>
                     {showPat ? '收起' : '使用访问令牌 (PAT) 连接'}
                   </button>
