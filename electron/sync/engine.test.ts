@@ -64,6 +64,22 @@ describe('reconcileState', () => {
     const res = await reconcileState(fakeAdapter({ data: remote }), store)
     expect(res.action).toBe('needs-confirmation')
   })
+
+  it('本地空画布(dirty) + 远端有数据 → 静默下载，不弹窗', async () => {
+    const local = { ...canvasWith({}), _syncTimestamp: 0 }            // 空画布（无意义），ts=0
+    const remote = { ...canvasWith({ cards: [{}] }), _syncTimestamp: 10000 }
+    const store = memStore({ data: local, mtime: 999999 })           // mtime≫ts → dirty
+    const res = await reconcileState(fakeAdapter({ data: remote }), store)
+    expect(res.action).toBe('downloaded')
+  })
+
+  it('本地有真实内容(dirty) + 远端有数据 → 仍需确认（回归）', async () => {
+    const local = { ...canvasWith({ cards: [{}] }), _syncTimestamp: 1 }
+    const remote = { ...canvasWith({ cards: [{}, {}] }), _syncTimestamp: 10000 }
+    const store = memStore({ data: local, mtime: 999999 })
+    const res = await reconcileState(fakeAdapter({ data: remote }), store)
+    expect(res.action).toBe('needs-confirmation')
+  })
 })
 
 describe('reconcileState — remoteUnchanged 快路径（保存免下载）', () => {

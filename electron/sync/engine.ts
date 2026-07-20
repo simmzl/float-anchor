@@ -115,6 +115,11 @@ export async function reconcileState(
   }
 
   if (localDirty) {
+    // 本地仅为新设备自动生成的空画布（无意义数据），远端有真实数据 → 静默采用远端，不弹窗。
+    if (!hasMeaningfulSyncData(localSummary) && hasMeaningfulSyncData(remoteSummary)) {
+      const applied = await applyRemote(adapter, store, remoteData)
+      return { success: true, action: 'downloaded', data: applied }
+    }
     if (remoteTs > localTs + LOCAL_SYNC_DIRTY_TOLERANCE_MS) {
       return { success: true, action: 'needs-confirmation', decision: buildSyncDecision(localData, remoteData, 'diverged') }
     }
