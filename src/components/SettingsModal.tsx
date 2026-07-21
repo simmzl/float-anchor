@@ -343,7 +343,10 @@ export default function SettingsModal() {
   }, [])
 
   const handleGithubConnect = useCallback(async () => {
-    if (!ghRepo.trim()) { setGhDeviceError('请先填写仓库 (owner/repo)'); return }
+    const parts = ghRepo.trim().replace(/^\/+|\/+$/g, '').split('/')
+    if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+      setGhDeviceError('仓库地址格式应为 owner/仓库名，例如 simmzl/float-anchor-sync-data'); return
+    }
     setGhConnecting(true); setGhDeviceError(null); setGhDeviceCode(null)
     const res = await window.electronAPI.githubDeviceStart()
     if (!res.success) { setGhConnecting(false); setGhDeviceError(res.error || '连接失败'); return }
@@ -356,8 +359,15 @@ export default function SettingsModal() {
   }, [])
 
   useEffect(() => {
-    const off = window.electronAPI.onGithubDeviceStatus((s) => {
+    const off = window.electronAPI.onGithubDeviceStatus(async (s) => {
       if (s.status === 'success') {
+        // 授权拿到 token 后先校验仓库可访问，避免仓库地址填错却静默"成功"
+        const check = await window.electronAPI.githubVerifyRepo({ repo: ghRepo.trim(), branch: ghBranch.trim() || 'main' })
+        if (!check.ok) {
+          setGhConnecting(false); setGhDeviceCode(null)
+          setGhDeviceError(`仓库无法访问：${check.error || '请检查仓库地址与权限'}`)
+          return
+        }
         setGhConnecting(false); setGhDeviceCode(null); setGhDeviceError(null)
         setGhConnected(true); setGhAccount(s.login ?? null)
         const st = { ...useStore.getState().settings, github: { repo: ghRepo.trim(), branch: ghBranch.trim() || 'main' } }

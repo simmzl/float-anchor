@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   githubClearToken: () => ipcRenderer.invoke('github-clear-token'),
   githubHasToken: () => ipcRenderer.invoke('github-has-token'),
   githubAccount: () => ipcRenderer.invoke('github-account'),
+  githubVerifyRepo: (c: { repo: string; branch?: string }) => ipcRenderer.invoke('github-verify-repo', c),
   githubDeviceStart: () => ipcRenderer.invoke('github-device-start'),
   githubDeviceCancel: () => ipcRenderer.invoke('github-device-cancel'),
   onGithubDeviceStatus: (cb: (s: any) => void) => {

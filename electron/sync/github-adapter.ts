@@ -16,9 +16,18 @@ function authHeaders(token: string): Record<string, string> {
   }
 }
 
+// 解析 owner/repo 全名：必须恰好两段且都非空，否则返回 null（如只填仓库名、缺 owner 前缀）。
+export function parseRepoFullName(repo: string): { owner: string; repo: string } | null {
+  const slug = (repo || '').trim().replace(/^\/+|\/+$/g, '')
+  const parts = slug.split('/')
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) return null
+  return { owner: parts[0].trim(), repo: parts[1].trim() }
+}
+
 export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapter> {
-  const slash = config.repo.trim().replace(/^\/+|\/+$/g, '')
-  const [owner, repo] = slash.split('/')
+  const parsed = parseRepoFullName(config.repo)
+  const owner = parsed?.owner ?? ''
+  const repo = parsed?.repo ?? ''
   const branch = config.branch || 'main'
   const base = `${API}/repos/${owner}/${repo}/contents`
   // 实例内缓存各路径 blob sha（更新必带）。同一次 runSync 复用同一 adapter 实例，故上传时 sha 新鲜。
@@ -64,6 +73,7 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
 
   return {
     async test() {
+      if (!parsed) return { ok: false, error: '仓库地址格式应为 owner/仓库名' }
       try {
         const resp = await ghFetch(`${API}/repos/${owner}/${repo}`)
         return resp.ok ? { ok: true } : { ok: false, error: `GitHub ${resp.status}` }

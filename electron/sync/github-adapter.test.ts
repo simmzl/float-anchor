@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { createGitHubAdapter } from './github-adapter'
+import { createGitHubAdapter, parseRepoFullName } from './github-adapter'
 
 function mockFetch(handler: (url: string, init?: any) => { status?: number; ok?: boolean; json?: any; text?: string; headers?: Record<string, string> }) {
   const calls: { url: string; init?: any }[] = []
@@ -84,5 +84,33 @@ describe('GitHubAdapter', () => {
     // 两者路径中图片段一致
     const segment = (url: string) => url.split('images/')[1]?.split('?')[0]
     expect(segment(putCall.url)).toBe(segment(dlCall.url))
+  })
+})
+
+describe('parseRepoFullName', () => {
+  it('owner/repo → 解析出两段', () => {
+    expect(parseRepoFullName('simmzl/float-anchor-sync-data')).toEqual({ owner: 'simmzl', repo: 'float-anchor-sync-data' })
+  })
+  it('缺 owner 前缀（仅仓库名）→ null', () => {
+    expect(parseRepoFullName('float-anchor-sync-data')).toBeNull()
+  })
+  it('空串 / 多段 / 半边为空 → null', () => {
+    expect(parseRepoFullName('')).toBeNull()
+    expect(parseRepoFullName('a/b/c')).toBeNull()
+    expect(parseRepoFullName('owner/')).toBeNull()
+    expect(parseRepoFullName('/repo')).toBeNull()
+  })
+  it('去除首尾斜杠与空格', () => {
+    expect(parseRepoFullName('  simmzl/repo/  ')).toEqual({ owner: 'simmzl', repo: 'repo' })
+  })
+})
+
+describe('createGitHubAdapter.test() — 仓库格式校验', () => {
+  it('缺 owner 前缀 → 明确报错，且不发网络请求', async () => {
+    const calls = mockFetch(() => ({ ok: true }))
+    const r = await createGitHubAdapter({ repo: 'float-anchor-sync-data', token: 't' }).test()
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('owner/仓库名')
+    expect(calls.length).toBe(0)
   })
 })

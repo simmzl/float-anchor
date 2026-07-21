@@ -187,6 +187,7 @@ declare global {
       githubClearToken: () => Promise<{ success: boolean }>
       githubHasToken: () => Promise<{ has: boolean }>
       githubAccount: () => Promise<{ login: string | null }>
+      githubVerifyRepo: (c: { repo: string; branch?: string }) => Promise<{ ok: boolean; error?: string }>
       githubDeviceStart: () => Promise<{ success: boolean; userCode?: string; verificationUri?: string; error?: string }>
       githubDeviceCancel: () => Promise<{ success: boolean }>
       onGithubDeviceStatus: (cb: (s: { status: 'success'; login: string | null } | { status: 'error'; error: string }) => void) => () => void

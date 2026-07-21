@@ -981,6 +981,13 @@ ipcMain.handle('github-account', async () => {
   } catch { return { login: null } }
 })
 
+ipcMain.handle('github-verify-repo', async (_e, c: { repo: string; branch?: string }) => {
+  const token = readGitHubToken()
+  if (!token) return { ok: false, error: '未连接 GitHub' }
+  const r = await createGitHubAdapter({ repo: c.repo, token, branch: c.branch }).test()
+  return r.ok ? { ok: true } : { ok: false, error: r.error }
+})
+
 function mapDeviceError(err: any): string {
   const m = String(err?.message ?? err ?? '')
   if (m === 'expired_token') return '授权码已过期，请重新连接'
