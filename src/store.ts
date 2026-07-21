@@ -163,8 +163,12 @@ export const useStore = create<AppState>((set, get) => ({
           })
           return { ...canvas, sections: fixed }
         })
+        // 视口是设备本地状态，从 sidecar 读取合并；数据文件内嵌的 viewport 仅作旧版本兜底
+        let vpMap: Record<string, CanvasViewport> = {}
+        try { vpMap = (await window.electronAPI.readViewports?.()) ?? {} } catch { vpMap = {} }
+        const merged = cleaned.map((c) => (vpMap[c.id] ? { ...c, viewport: vpMap[c.id] } : c))
         set({
-          canvases: cleaned,
+          canvases: merged,
           activeCanvasId: data.activeCanvasId ?? cleaned[0].id,
           loaded: true,
         })
@@ -186,7 +190,13 @@ export const useStore = create<AppState>((set, get) => ({
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
       const { canvases, activeCanvasId, settings, syncDecision } = get()
-      void window.electronAPI.writeData({ canvases, activeCanvasId }).then((saved) => {
+      // 视口是设备本地状态：不落数据文件（由 saveViewport 写 sidecar），避免平移缩放触发同步
+      const persistable = canvases.map((c) => {
+        if (!c.viewport) return c
+        const { viewport: _viewport, ...rest } = c
+        return rest
+      })
+      void window.electronAPI.writeData({ canvases: persistable, activeCanvasId }).then((saved) => {
         if (!saved) return
         if (getEffectiveProvider(settings) !== 'none' && !syncDecision) {
           set({ syncStatus: 'pending', syncError: null })
@@ -1233,7 +1243,8 @@ export const useStore = create<AppState>((set, get) => ({
         c.id === canvasId ? { ...c, viewport } : c,
       ),
     }))
-    get().persist()
+    // 视口跟设备走：写本地 sidecar，不写数据文件、不触发同步
+    void window.electronAPI.writeViewport?.(canvasId, viewport)
   },
 
   ensureShareId: (canvasId) => {

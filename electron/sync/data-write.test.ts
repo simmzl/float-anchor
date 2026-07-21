@@ -49,3 +49,29 @@ describe('prepareDataWrite（写盘前：回填时间戳 + 判断是否需要写
     expect(r.data._syncTimestamp).toBe(88888)
   })
 })
+
+describe('设备本地状态不触发写盘（视口/测量高度回归锁）', () => {
+  it('仅 viewport 变化 → changed=false（平移缩放不触发同步）', () => {
+    const existing = {
+      canvases: [{ id: 'cv', name: 'cv', cards: [], viewport: { panX: 0, panY: 0, scale: 1 } }],
+      activeCanvasId: 'cv', _syncTimestamp: 1,
+    }
+    const incoming = {
+      canvases: [{ id: 'cv', name: 'cv', cards: [], viewport: { panX: 500, panY: -200, scale: 2 } }],
+      activeCanvasId: 'cv',
+    }
+    expect(prepareDataWrite(incoming, existing).changed).toBe(false)
+  })
+
+  it('仅卡片测量高度变化 → changed=false（跨设备渲染差异不触发同步）', () => {
+    const existing = {
+      canvases: [{ id: 'cv', name: 'cv', cards: [{ id: 'c1', title: 'A', height: 150 }] }],
+      activeCanvasId: 'cv', _syncTimestamp: 1,
+    }
+    const incoming = {
+      canvases: [{ id: 'cv', name: 'cv', cards: [{ id: 'c1', title: 'A', height: 153 }] }],
+      activeCanvasId: 'cv',
+    }
+    expect(prepareDataWrite(incoming, existing).changed).toBe(false)
+  })
+})

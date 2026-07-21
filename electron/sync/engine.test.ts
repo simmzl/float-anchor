@@ -157,6 +157,39 @@ describe('downloadMissingImages — 扩展名容差匹配', () => {
   })
 })
 
+describe('上传剥离设备本地状态（视口）', () => {
+  it('keep-local 上传后云端数据无 viewport，卡片高度保留', async () => {
+    const local = {
+      canvases: [{
+        id: 'c1', name: 'C',
+        cards: [{ id: 'k1', height: 150 }],
+        viewport: { panX: 1, panY: 2, scale: 1.5 },
+      }],
+      activeCanvasId: 'c1',
+      _syncTimestamp: 1,
+    }
+    const store = memStore({ data: local as any, mtime: 1 })
+    const adapter = fakeAdapter({ data: { ...canvasWith({}), _syncTimestamp: 9 } })
+    const res = await resolveConflict(adapter, store, 'keep-local')
+    expect(res.action).toBe('uploaded')
+    expect(adapter._data?.canvases[0].viewport).toBeUndefined()
+    expect(adapter._data?.canvases[0].cards[0].height).toBe(150)
+  })
+
+  it('reconcile 自动上传路径同样剥离 viewport', async () => {
+    const local = {
+      canvases: [{ id: 'c1', name: 'C', cards: [{}], viewport: { panX: 3, panY: 4, scale: 1 } }],
+      activeCanvasId: 'c1',
+      _syncTimestamp: 1,
+    }
+    const store = memStore({ data: local as any, mtime: 1 })
+    const adapter = fakeAdapter() // 远端无快照 → 直接上传
+    const res = await reconcileState(adapter, store)
+    expect(res.action).toBe('uploaded')
+    expect(adapter._data?.canvases[0].viewport).toBeUndefined()
+  })
+})
+
 describe('resolveConflict', () => {
   it('keep-local → 上传本地', async () => {
     const store = memStore({ data: { ...canvasWith({ cards: [{}] }), _syncTimestamp: 1 }, mtime: 1 })

@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('electronAPI', {
   readData: () => ipcRenderer.invoke('read-data'),
   writeData: (data: unknown) => ipcRenderer.invoke('write-data', data),
+  readViewports: () => ipcRenderer.invoke('read-viewports'),
+  writeViewport: (canvasId: string, viewport: unknown) => ipcRenderer.invoke('write-viewport', canvasId, viewport),
   readSettings: () => ipcRenderer.invoke('read-settings'),
   writeSettings: (data: unknown) => ipcRenderer.invoke('write-settings', data),
   getPlatform: () => ipcRenderer.invoke('get-platform'),

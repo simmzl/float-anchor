@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   summarizeSyncData, hasMeaningfulSyncData, isHighRiskRemoteOverwrite, buildSyncDecision, formatSyncSummary,
+  getComparableSyncSnapshot, stripDeviceLocalState,
 } from './summary'
 
 const canvas = (over: any = {}) => ({ id: 'c1', name: 'C', cards: [], ...over })
@@ -59,5 +60,80 @@ describe('texts 纳入保护（Task 3）', () => {
   it('formatSyncSummary 含文本框数量', () => {
     const s = summarizeSyncData({ canvases: [canvas({ texts: [{}] })] })
     expect(formatSyncSummary(s)).toContain('文本框')
+  })
+})
+
+describe('getComparableSyncSnapshot — 设备本地状态不参与指纹', () => {
+  const base = () => ({
+    canvases: [canvas({
+      cards: [{ id: 'k1', title: 'A', x: 0, y: 0, width: 300, height: 150 }],
+      texts: [{ id: 't1', text: 'T', x: 0, y: 0, width: 200, height: 40 }],
+      sections: [{ id: 's1', name: 'S', x: 0, y: 0, width: 600, height: 400, color: '#fff' }],
+      viewport: { panX: 0, panY: 0, scale: 1 },
+    })],
+    activeCanvasId: 'c1',
+  })
+
+  it('仅 viewport 不同 → 指纹一致', () => {
+    const a = base()
+    const b = base()
+    b.canvases[0].viewport = { panX: 500, panY: -200, scale: 2 }
+    expect(getComparableSyncSnapshot(a)).toBe(getComparableSyncSnapshot(b))
+  })
+
+  it('一方无 viewport、另一方有 → 指纹一致', () => {
+    const a = base()
+    const b = base()
+    delete (b.canvases[0] as any).viewport
+    expect(getComparableSyncSnapshot(a)).toBe(getComparableSyncSnapshot(b))
+  })
+
+  it('仅卡片测量高度不同 → 指纹一致', () => {
+    const a = base()
+    const b = base()
+    b.canvases[0].cards[0].height = 153
+    expect(getComparableSyncSnapshot(a)).toBe(getComparableSyncSnapshot(b))
+  })
+
+  it('仅文本框测量高度不同 → 指纹一致', () => {
+    const a = base()
+    const b = base()
+    b.canvases[0].texts[0].height = 44
+    expect(getComparableSyncSnapshot(a)).toBe(getComparableSyncSnapshot(b))
+  })
+
+  it('分区高度不同（用户拖拽的真实尺寸）→ 指纹不同', () => {
+    const a = base()
+    const b = base()
+    b.canvases[0].sections[0].height = 500
+    expect(getComparableSyncSnapshot(a)).not.toBe(getComparableSyncSnapshot(b))
+  })
+
+  it('卡片内容不同 → 指纹不同（防误伤）', () => {
+    const a = base()
+    const b = base()
+    b.canvases[0].cards[0].title = 'B'
+    expect(getComparableSyncSnapshot(a)).not.toBe(getComparableSyncSnapshot(b))
+  })
+})
+
+describe('stripDeviceLocalState — 上传前剥离视口', () => {
+  it('移除各画布 viewport，其余字段与卡片高度保留', () => {
+    const data = {
+      canvases: [
+        canvas({ cards: [{ id: 'k1', height: 150 }], viewport: { panX: 1, panY: 2, scale: 1.5 } }),
+        canvas({ id: 'c2' }),
+      ],
+      activeCanvasId: 'c1',
+      _syncTimestamp: 7,
+    }
+    const stripped = stripDeviceLocalState(data as any)
+    expect(stripped.canvases[0].viewport).toBeUndefined()
+    expect('viewport' in stripped.canvases[0]).toBe(false)
+    expect(stripped.canvases[0].cards[0].height).toBe(150)
+    expect(stripped.canvases[1].id).toBe('c2')
+    expect(stripped._syncTimestamp).toBe(7)
+    // 原对象不被修改
+    expect((data.canvases[0] as any).viewport).toEqual({ panX: 1, panY: 2, scale: 1.5 })
   })
 })

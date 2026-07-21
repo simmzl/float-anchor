@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { AppData, SyncResolution } from './summary'
 import {
   normalizeSyncData, summarizeSyncData, hasMeaningfulSyncData, getComparableSyncSnapshot,
-  isHighRiskRemoteOverwrite, buildSyncDecision,
+  isHighRiskRemoteOverwrite, buildSyncDecision, stripDeviceLocalState,
 } from './summary'
 import type { RemoteAdapter, LocalStore, SyncResult } from './types'
 import { isRemoteImageNameMatch, getImageBasename } from './image-names'
@@ -45,7 +45,8 @@ export async function downloadMissingImages(adapter: RemoteAdapter, store: Local
 
 async function uploadSnapshot(adapter: RemoteAdapter, store: LocalStore): Promise<AppData> {
   const local = store.readSnapshot()
-  const data = normalizeSyncData(local, 0)
+  // 视口是设备本地状态，不进云端（渲染端有独立 sidecar 持久化，见 store.saveViewport）
+  const data = stripDeviceLocalState(normalizeSyncData(local, 0))
   data._syncTimestamp = Date.now()
   await uploadImagesDiff(adapter, store)
   await adapter.uploadRemoteSnapshot(data)

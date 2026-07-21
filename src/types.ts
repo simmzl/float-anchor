@@ -158,6 +158,8 @@ declare global {
     electronAPI: {
       readData: () => Promise<AppData | null>
       writeData: (data: AppData) => Promise<boolean>
+      readViewports: () => Promise<Record<string, CanvasViewport> | null>
+      writeViewport: (canvasId: string, viewport: CanvasViewport) => Promise<boolean>
       readSettings: () => Promise<AppSettings | null>
       writeSettings: (data: AppSettings) => Promise<boolean>
       getPlatform: () => Promise<string>

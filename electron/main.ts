@@ -25,14 +25,16 @@ const pExecFile = promisify(execFile)
 let dataDir = ''
 let dataFile = ''
 let settingsFile = ''
+let viewportsFile = ''
 
 function getDataPaths() {
   if (!dataDir) {
     dataDir = path.join(app.getPath('userData'), 'data')
     dataFile = path.join(dataDir, 'float-anchor.json')
     settingsFile = path.join(dataDir, 'float-anchor-settings.json')
+    viewportsFile = path.join(dataDir, 'float-anchor-viewports.json')
   }
-  return { dataDir, dataFile, settingsFile }
+  return { dataDir, dataFile, settingsFile, viewportsFile }
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -420,6 +422,39 @@ ipcMain.handle('write-data', async (_event, data: unknown) => {
     return true
   } catch (err) {
     console.error('Failed to write data:', err)
+    return false
+  }
+})
+
+/* 视口是设备本地状态（跟设备走，不进云端同步），单独存 sidecar 文件。*/
+
+ipcMain.handle('read-viewports', async () => {
+  try {
+    const { viewportsFile: file } = getDataPaths()
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf-8'))
+  } catch (err) {
+    console.error('Failed to read viewports:', err)
+  }
+  return null
+})
+
+ipcMain.handle('write-viewport', async (_event, canvasId: unknown, viewport: unknown) => {
+  try {
+    if (typeof canvasId !== 'string' || !canvasId) return false
+    const { viewportsFile: file } = getDataPaths()
+    ensureDataDir()
+    let map: Record<string, unknown> = {}
+    if (fs.existsSync(file)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'))
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) map = parsed
+      } catch { /* 损坏则重建 */ }
+    }
+    map[canvasId] = viewport
+    fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf-8')
+    return true
+  } catch (err) {
+    console.error('Failed to write viewport:', err)
     return false
   }
 })

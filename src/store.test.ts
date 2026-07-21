@@ -477,3 +477,76 @@ describe('分享 shareId', () => {
     expect(useStore.getState().settings.shareDomain).toBeUndefined()
   })
 })
+
+describe('视口设备本地化（不进数据文件，跟设备走）', () => {
+  let writeData: ReturnType<typeof vi.fn>
+  let writeViewport: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    writeData = vi.fn(() => Promise.resolve(true))
+    writeViewport = vi.fn(() => Promise.resolve(true))
+    ;(globalThis as unknown as { window: unknown }).window = { electronAPI: { writeData, writeViewport } }
+    useStore.setState({
+      activeCanvasId: 'cv',
+      canvases: [{ id: 'cv', name: 'cv', cards: [] }],
+      settings: { theme: 'light' } as AppSettings,
+      syncDecision: null,
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('saveViewport 更新内存并写 sidecar，不写数据文件', () => {
+    useStore.getState().saveViewport('cv', { panX: 1, panY: 2, scale: 1.5 })
+    vi.advanceTimersByTime(600)
+    expect(useStore.getState().canvases[0].viewport).toEqual({ panX: 1, panY: 2, scale: 1.5 })
+    expect(writeViewport).toHaveBeenCalledWith('cv', { panX: 1, panY: 2, scale: 1.5 })
+    expect(writeData).not.toHaveBeenCalled()
+  })
+
+  it('persist 写盘的数据不含 viewport（内存中的视口不落数据文件）', () => {
+    useStore.setState({
+      canvases: [{ id: 'cv', name: 'cv', cards: [], viewport: { panX: 9, panY: 9, scale: 2 } }],
+    })
+    useStore.getState().persist()
+    vi.advanceTimersByTime(600)
+    expect(writeData).toHaveBeenCalledTimes(1)
+    const written = writeData.mock.calls[0][0]
+    expect(written.canvases[0].viewport).toBeUndefined()
+    expect(written.canvases[0].id).toBe('cv')
+  })
+
+  it('loadData 合并 sidecar 视口：sidecar 优先，数据文件内嵌作 legacy 兜底', async () => {
+    const readData = vi.fn(() => Promise.resolve({
+      canvases: [
+        { id: 'a', name: 'A', cards: [], viewport: { panX: 1, panY: 1, scale: 1 } },
+        { id: 'b', name: 'B', cards: [], viewport: { panX: 2, panY: 2, scale: 1 } },
+      ],
+      activeCanvasId: 'a',
+    }))
+    const readViewports = vi.fn(() => Promise.resolve({ a: { panX: 100, panY: 200, scale: 0.5 } }))
+    ;(globalThis as unknown as { window: unknown }).window = {
+      electronAPI: { writeData, writeViewport, readData, readViewports },
+    }
+    await useStore.getState().loadData()
+    const [a, b] = useStore.getState().canvases
+    expect(a.viewport).toEqual({ panX: 100, panY: 200, scale: 0.5 })
+    expect(b.viewport).toEqual({ panX: 2, panY: 2, scale: 1 })
+  })
+
+  it('loadData 在 readViewports 缺失/失败时不影响数据加载', async () => {
+    const readData = vi.fn(() => Promise.resolve({
+      canvases: [{ id: 'a', name: 'A', cards: [{ id: 'k', title: 't', content: '', x: 0, y: 0, width: 300 }] }],
+      activeCanvasId: 'a',
+    }))
+    ;(globalThis as unknown as { window: unknown }).window = {
+      electronAPI: { writeData, readData }, // 无 readViewports
+    }
+    await useStore.getState().loadData()
+    expect(useStore.getState().canvases[0].id).toBe('a')
+    expect(useStore.getState().canvases[0].cards.length).toBe(1)
+  })
+})

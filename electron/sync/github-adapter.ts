@@ -57,13 +57,25 @@ export function createGitHubAdapter(config: GitHubConfig): Required<RemoteAdapte
     return meta?.sha || null
   }
 
-  async function putFile(path: string, base64: string, message: string, ifMatch?: string): Promise<string | undefined> {
+  async function putFile(path: string, base64: string, message: string, ifMatch?: string, isRetry = false): Promise<string | undefined> {
+    let sha = ifMatch ?? shaCache.get(path)
+    // 冷启动缓存为空（如「解决冲突」路径新建 adapter 后直接上传）：
+    // 更新已存在文件必须带当前 blob sha，先查一次；404（文件不存在）时无 sha 直接创建。
+    if (!sha) {
+      try { sha = (await fetchSha(path)) ?? undefined } catch { /* 查询失败仍尝试 PUT，由下方重试兜底 */ }
+    }
     const body: Record<string, unknown> = { message, content: base64, branch }
-    const sha = ifMatch ?? shaCache.get(path)
     if (sha) body.sha = sha
     const resp = await ghFetch(`${base}/${encodePath(path)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
+    // sha 缺失/过期竞态（上传瞬间远端变更）：刷新 sha 后重试一次
+    if ((resp.status === 409 || resp.status === 422) && !isRetry) {
+      shaCache.delete(path)
+      let fresh: string | undefined
+      try { fresh = (await fetchSha(path)) ?? undefined } catch { /* 刷新失败则按原状态报错 */ }
+      if (fresh && fresh !== sha) return putFile(path, base64, message, fresh, true)
+    }
     if (!resp.ok) throw new Error(`GitHub ${resp.status}`)
     const json = await resp.json()
     const newSha = json?.content?.sha

@@ -54,6 +54,61 @@ describe('GitHubAdapter', () => {
     expect(put.init.headers.Authorization).toBe('Bearer t0ken')
   })
 
+  it('冷启动上传（无缓存 sha、远端已有文件）→ 先查 sha 再 PUT', async () => {
+    // 对应「解决冲突 keep-local」场景：IPC 新建 adapter，shaCache 为空，直接上传。
+    // 修复前：PUT 不带 sha → GitHub 422（更新已存在文件必须带 blob sha）。
+    const calls = mockFetch((url, init) => {
+      if (init?.method === 'PUT') return { json: { content: { sha: 'new1' } } }
+      return { json: { sha: 'cold1' } } // GET 元数据
+    })
+    const a = createGitHubAdapter(cfg)
+    const r = await a.uploadRemoteSnapshot({ canvases: [], activeCanvasId: null } as any)
+    expect(r.tag).toBe('new1')
+    const put = calls.find((c) => c.init?.method === 'PUT')!
+    expect(JSON.parse(put.init.body).sha).toBe('cold1')
+  })
+
+  it('冷启动上传且远端不存在该文件（404）→ 不带 sha 直接创建', async () => {
+    const calls = mockFetch((url, init) => {
+      if (init?.method === 'PUT') return { json: { content: { sha: 'created1' } } }
+      return { status: 404, ok: false }
+    })
+    const r = await createGitHubAdapter(cfg).uploadRemoteSnapshot({ canvases: [], activeCanvasId: null } as any)
+    expect(r.tag).toBe('created1')
+    const put = calls.find((c) => c.init?.method === 'PUT')!
+    expect(JSON.parse(put.init.body).sha).toBeUndefined()
+  })
+
+  it('PUT 遇 409/422（sha 过期竞态）→ 刷新 sha 重试一次', async () => {
+    let puts = 0
+    const calls = mockFetch((url, init) => {
+      if (init?.method === 'PUT') {
+        puts++
+        if (puts === 1) return { status: 422, ok: false, json: {} }
+        return { json: { content: { sha: 'new2' } } }
+      }
+      // GET sha：第一次（冷启动预取）返回过期 sha，重试刷新时返回新 sha
+      return { json: { sha: puts === 0 ? 'stale1' : 'fresh2' } }
+    })
+    const a = createGitHubAdapter(cfg)
+    const r = await a.uploadRemoteSnapshot({ canvases: [], activeCanvasId: null } as any)
+    expect(r.tag).toBe('new2')
+    const putCalls = calls.filter((c) => c.init?.method === 'PUT')
+    expect(putCalls.length).toBe(2)
+    expect(JSON.parse(putCalls[1].init.body).sha).toBe('fresh2')
+  })
+
+  it('PUT 重试仍失败 → 抛错（不无限重试）', async () => {
+    let puts = 0
+    mockFetch((url, init) => {
+      if (init?.method === 'PUT') { puts++; return { status: 409, ok: false, json: {} } }
+      return { json: { sha: `s${puts}` } }
+    })
+    const a = createGitHubAdapter(cfg)
+    await expect(a.uploadRemoteSnapshot({ canvases: [], activeCanvasId: null } as any)).rejects.toThrow('GitHub 409')
+    expect(puts).toBe(2)
+  })
+
   it('listRemoteImages 过滤 file；404 返回 []', async () => {
     mockFetch(() => ({ json: [{ type: 'file', name: 'a.png', size: 3, sha: 'i1' }, { type: 'dir', name: 'x' }] }))
     expect(await createGitHubAdapter(cfg).listRemoteImages()).toEqual([{ name: 'a.png', size: 3 }])

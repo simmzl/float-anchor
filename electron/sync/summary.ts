@@ -65,12 +65,42 @@ export function hasMeaningfulSyncData(summary: SyncSummary): boolean {
   return summary.totalEntityCount > 0 || summary.canvasCount > 1
 }
 
+// 设备本地/设备相关字段不参与内容判等：
+// - canvas.viewport：视口平移缩放，跟设备走，不算数据差异
+// - card/text 的 height：渲染后自动测量回写，跨设备字体/DPI 差异会造成永不收敛的假差异
+// section.height 是用户拖拽的真实尺寸，保留。
+function dropHeight(item: any) {
+  if (!item || typeof item !== 'object' || !('height' in item)) return item
+  const { height: _height, ...rest } = item
+  return rest
+}
+
+function comparableCanvas(c: any) {
+  if (!c || typeof c !== 'object') return c
+  const { viewport: _viewport, ...rest } = c
+  if (Array.isArray(rest.cards)) rest.cards = rest.cards.map(dropHeight)
+  if (Array.isArray(rest.texts)) rest.texts = rest.texts.map(dropHeight)
+  return rest
+}
+
 export function getComparableSyncSnapshot(data: any): string {
   const normalized = normalizeSyncData(data)
   return JSON.stringify({
-    canvases: normalized.canvases,
+    canvases: (normalized.canvases || []).map(comparableCanvas),
     activeCanvasId: normalized.activeCanvasId,
   })
+}
+
+// 上传前剥离设备本地状态：视口不进云端。height 保留——作为其他端渲染前的初始布局兜底。
+export function stripDeviceLocalState(data: AppData): AppData {
+  return {
+    ...data,
+    canvases: (data.canvases || []).map((c: any) => {
+      if (!c || typeof c !== 'object' || !('viewport' in c)) return c
+      const { viewport: _viewport, ...rest } = c
+      return rest
+    }),
+  }
 }
 
 export function formatSyncSummary(summary: SyncSummary): string {
