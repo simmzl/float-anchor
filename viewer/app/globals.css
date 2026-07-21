@@ -49,6 +49,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .canvas-toolbar {
@@ -82,11 +83,61 @@ body {
   flex: 1;
   overflow: hidden;
   position: relative;
-  cursor: default;
+  cursor: grab;
   background-color: #f6f6f6;
   background-image: radial-gradient(circle, #d4d4d4 1px, transparent 1px);
   background-size: 24px 24px;
   isolation: isolate;
+  /* 触摸端由 pointer 事件接管拖拽，禁用浏览器默认手势 */
+  touch-action: none;
+}
+
+.canvas-viewport.panning {
+  cursor: grabbing;
+}
+
+/* ===== Viewer Controls（右下角悬浮） ===== */
+.viewer-controls {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 20;
+}
+
+.viewer-control-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.viewer-control-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.viewer-control-btn:active {
+  transform: translateY(1px);
+}
+
+/* 归正与缩放分组：留出视觉间隔 */
+.viewer-control-fit {
+  margin-top: 6px;
 }
 
 .canvas-inner {
