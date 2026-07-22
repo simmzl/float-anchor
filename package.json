@@ -1,7 +1,7 @@
 {
   "name": "float-anchor",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "FloatAnchor - 白板卡片笔记应用",
   "author": "FloatAnchor",
   "main": "dist-electron/main.js",
@@ -28,9 +28,18 @@
       "build/icon.png"
     ],
     "extraResources": [
-      { "from": "cli/dist", "to": "cli/dist" },
-      { "from": "cli/package.json", "to": "cli/package.json" },
-      { "from": "cli/skill", "to": "cli/skill" }
+      {
+        "from": "cli/dist",
+        "to": "cli/dist"
+      },
+      {
+        "from": "cli/package.json",
+        "to": "cli/package.json"
+      },
+      {
+        "from": "cli/skill",
+        "to": "cli/skill"
+      }
     ],
     "mac": {
       "target": [
