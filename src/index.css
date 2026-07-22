@@ -991,30 +991,13 @@ input {
   border-radius: 3px;
 }
 
-.card-edit-content {
-  width: 100%;
-  min-height: 80px;
-  max-height: 400px;
-  resize: none;
-  border: none;
-  outline: none;
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--text-primary);
-  background: transparent;
-  tab-size: 2;
-  overflow-y: auto;
-}
-
-.card-edit-content::placeholder {
-  color: var(--text-muted);
-}
-
 /* ---- TipTap Rich Editor ---- */
+/* 编辑态高度跟随内容撑开（卡片本身在编辑时不套固定高度，见 NoteCard 的 style）。
+   上限仅用于兜住超长内容——否则工具栏会被顶出屏幕、无从编辑。
+   用固定 px 而非 vh：卡片处在画布的 scale() 变换内，vh 会随缩放漂移。 */
 .rich-editor-wrap {
   overflow-y: auto;
-  max-height: 400px;
+  max-height: 1200px;
 }
 
 .rich-editor .ProseMirror {

@@ -3,7 +3,7 @@ import ReactMarkdown, { Components, defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { useStore, useCardById, useIsEditing, useCardActions } from '../store'
-import { shouldCommitHeight } from '../card-measure'
+import { shouldCommitHeight, shouldGrowToFit } from '../card-measure'
 import RichEditor from './RichEditor'
 
 interface Props {
@@ -174,6 +174,24 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
     return () => cancelAnimationFrame(raf)
   }, [cardId, card?.height, isEditing, measureHeight, updateCard])
 
+  // 图片是异步加载的，退出编辑时那一帧测到的高度不含尚未解码的图片，会偏小；
+  // 卡片 overflow:hidden，偏小的高度会把图片底部裁掉且没有滚动条。图片加载完成后补测一次。
+  // 多张图片各自触发，用 rAF 合并成一次测量。
+  const growRaf = useRef(0)
+  const remeasureAfterAsyncLoad = useCallback(() => {
+    if (useStore.getState().editingCardId === cardId) return
+    cancelAnimationFrame(growRaf.current)
+    growRaf.current = requestAnimationFrame(() => {
+      const h = measureHeight()
+      const current = useStore.getState().canvases
+        .find((c) => c.cards.some((k) => k.id === cardId))
+        ?.cards.find((k) => k.id === cardId)?.height
+      if (shouldGrowToFit(h, current)) updateCard(cardId, { height: h })
+    })
+  }, [cardId, measureHeight, updateCard])
+
+  useEffect(() => () => cancelAnimationFrame(growRaf.current), [])
+
   const debouncedSave = useCallback(
     (t: string, c: string) => {
       clearTimeout(saveTimer.current)
@@ -326,6 +344,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
         alt={alt || ''}
         {...props}
         style={{ maxWidth: '100%', borderRadius: 4 }}
+        onLoad={remeasureAfterAsyncLoad}
         onError={(e) => {
           const el = e.currentTarget
           if (!el.dataset.failed) {
@@ -339,7 +358,7 @@ const NoteCard = React.memo(function NoteCard({ cardId, scale, highlight, select
         }}
       />
     ),
-  }), [imageCacheVersion])
+  }), [imageCacheVersion, remeasureAfterAsyncLoad])
 
   const renderedContent = useMemo(() => {
     if (!card?.content) return null

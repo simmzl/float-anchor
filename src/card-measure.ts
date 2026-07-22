@@ -17,3 +17,19 @@ export function shouldCommitHeight(
   if (current == null) return true
   return Math.abs(measured - current) > HEIGHT_COMMIT_TOLERANCE_PX
 }
+
+/**
+ * 图片等异步内容加载完成后，是否需要加高卡片。
+ *
+ * 与 shouldCommitHeight 的区别：只在内容装不下时加高，从不压缩。
+ * 卡片是 overflow:hidden，测量发生在图片加载前会得到偏小的高度，导致图片被裁切且无滚动条；
+ * 但反向的"变矮"可能是用户手动拉高留白，异步加载不该把它抢回去。
+ */
+export function shouldGrowToFit(
+  measured: number | null | undefined,
+  current: number | null | undefined,
+): boolean {
+  if (measured == null) return false
+  if (current == null) return true
+  return measured - current > HEIGHT_COMMIT_TOLERANCE_PX
+}
