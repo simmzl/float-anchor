@@ -54,7 +54,7 @@
 
 ## 下载安装
 
-前往 [Releases](https://github.com/swordrada/float-anchor/releases) 页面下载最新版本：
+前往 [Releases](https://github.com/simmzl/float-anchor/releases) 页面下载最新版本：
 
 | 文件 | 平台 | 适用设备 |
 |------|------|----------|

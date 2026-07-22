@@ -39,7 +39,8 @@ function getDataPaths() {
 
 let mainWindow: BrowserWindow | null = null
 
-const GITHUB_OWNER = 'swordrada'
+// 更新检查的发版仓库，须与实际发布 Release 的仓库一致
+const GITHUB_OWNER = 'simmzl'
 const GITHUB_REPO = 'float-anchor'
 const CURRENT_VERSION = app.getVersion()
 
